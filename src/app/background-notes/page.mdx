@@ -1,0 +1,46 @@
+# Neetcode System Design for Beginners - Background (Notes)
+
+<small>Compile these from our separate notes into a nice Background notes page?</small>
+
+**Resource Used:** <a href="https://neetcode.io/courses/system-design-for-beginners/0">Neetcode: System Design for Beginners - Background Videos (0-2)</a>
+## Ty
+
+<img src="./App-Arch-Diag-Ty.jpg" alt="App Architecture Diagram"/>
+
+- Vertical scaling: Upgrading server components to increase bandwidth
+- Horizontal scaling: Duplicating / building existing servers to increase bandwidth
+    - this typically requires a load balancer (program that forwards requests to the server that currently has the smallest load (# of users))
+    - Horizontal scaling is usually the better option for most real-life scenarios because it also adds redundancy. If one server goes down, you are still able to provide service to *some* of your customer base. Rather than only having one *really good* server. If your one server goes down then you can't provide anyone with any type of service. 
+    - Also allows for faster service (i.e. lower latency) in different areas of the world. If multiple servers exist in different geographical locations, it is easy for DNS to route them to the current fastest connection (usually the closest physical server location to them)
+- Logs: time series data (i.e. every log contains time stamps)
+
+### Design Requirements
+1. Move Data: computer -> computer/server -> server
+2. Store Data: Binary Search Trees (BST), Arrays, Databses, Blob Stores
+    - Blob Store: Containers of the same data type but stored in an unstructured way (i.e. mp4, jpg, .txt). There is no file hierarchy, but this data usually cannot be stored in a database. Blob Stores are designed to scale very well and can handle massive amounts of data.
+3. Transform Data: logs, metrics, % users doing X action
+
+#### Important things to consider
+1. Design mistakes are very hard to fix in the future. Making good design choices the first time around (before the project is deployed at scale and servicing customers) is extremely important to ensure your service can be sustained when experiencing growth.
+2. How much availability (uptime) does the service require? What cost comes with increased uptime? Are there diminishing returns to increasing the uptime? 
+    - Generally, an increase from 99% uptime to 99.9% uptime may cost as much as it did to go from 95% uptime to 99% uptime. The closer you get to 100%, the costs increase exponentially.
+    - 99% uptime  = 3.65 days down per year
+    - 99.9% uptime = 5.5 minutes down per year
+    - Question to consider: How many years of saving the money lost from those 3.65 days of downtime would it take to cover the price of an upgrade?
+
+#### Reliabilty, Fault Tolerance, Redundancy
+- Reliability: Probability the system won't fail
+    - More server (horizontally scaled) usually means increased reliability due to the increase in request capacity (bandwidth)
+- Fault tolerance: System will still function during faults
+    - multiple servers allows for service to continue if/when one of them goes down
+- Redundancy: more servers in different locations
+    - This is part of fault tolerance, but also provides more options for people connecting from different parts of the world. Or, for example, if you have servers in Vancouver, Los Angeles, and Toronto, someone on the West Coast of Canada could easily connect to the Vancouver or Los Angeles server if one of them is slower than the other or one goes down temporarily.
+- Throughput: # requests (load) over a period of time that the server(s) can handle
+    - *horizontal scaling* works best here since a single server can only be upgraded so many times with *vertical scaling*. Plus, it removes the one single failure point discussed earlier.
+    - database throughput: queries/second
+    - important to know data transfer capacity and processing capacity per second
+- Latency: period of time it takes to omplete an operation (usually in terms of end-end time)
+    - i.e. takes 1 second for user to receive response from user (end-end time)
+    - Also hardware latency to consider
+        - Cached items will always be received and transmitted faster than items sitting in RAM or even in long-term storage such as on a disk or SSD
+    - Servers in different locations = less latency for users connecting. Can use DNS to route them to the closest (or fastest) server(s).
