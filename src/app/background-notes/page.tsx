@@ -3,5 +3,5 @@
 import Background_Notes from '@/markdown/background-notes.mdx';
 
 export default function Page() {
-    return Background_Notes;
+    return <Background_Notes />;
 }
