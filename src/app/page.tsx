@@ -1,4 +1,5 @@
 import Docs from '../markdown/docs.mdx'
+import BackgroundNotes from '../markdown/background-notes.mdx'
 
 export default function Home() {
   return (
@@ -9,6 +10,10 @@ export default function Home() {
       
       <article className="prose prose-invert max-w-none">
         <Docs />
+      </article>
+
+      <article className="prose prose-invert max-w-none">
+        <BackgroundNotes />
       </article>
     </main>
   );
