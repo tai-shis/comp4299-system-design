@@ -3,5 +3,9 @@
 import Docs from '@/markdown/docs.mdx';
 
 export default function Page() {
-    return <Docs />;
+  return (
+    <div className="">
+      <Docs />
+    </div>
+  )
 }
