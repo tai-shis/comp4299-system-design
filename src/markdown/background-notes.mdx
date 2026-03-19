@@ -1,46 +1,302 @@
-# Neetcode System Design for Beginners - Background (Notes)
+import MermaidDiagram from '@/components/MermaidDiagram';
+import Callout from '@/components/Callout';
 
-<small>Compile these from our separate notes into a nice Background notes page?</small>
+# System Design Fundamentals
 
-**Resource Used:** <a href="https://neetcode.io/courses/system-design-for-beginners/0">Neetcode: System Design for Beginners - Background Videos (0-2)</a>
-## Ty
+**Resource:** [Neetcode — System Design for Beginners, Background Videos 0–2](https://neetcode.io/courses/system-design-for-beginners/0)
 
-<img src="../assets/App-Arch-Diag-Ty.jpg" alt="App Architecture Diagram"/>
+These notes cover the foundational concepts required before diving into designing real-world systems at scale. Think of this as the vocabulary and mental models you need before tackling anything more complex.
 
-- Vertical scaling: Upgrading server components to increase bandwidth
-- Horizontal scaling: Duplicating / building existing servers to increase bandwidth
-    - this typically requires a load balancer (program that forwards requests to the server that currently has the smallest load (# of users))
-    - Horizontal scaling is usually the better option for most real-life scenarios because it also adds redundancy. If one server goes down, you are still able to provide service to *some* of your customer base. Rather than only having one *really good* server. If your one server goes down then you can't provide anyone with any type of service. 
-    - Also allows for faster service (i.e. lower latency) in different areas of the world. If multiple servers exist in different geographical locations, it is easy for DNS to route them to the current fastest connection (usually the closest physical server location to them)
-- Logs: time series data (i.e. every log contains time stamps)
+---
 
-### Design Requirements
-1. Move Data: computer -> computer/server -> server
-2. Store Data: Binary Search Trees (BST), Arrays, Databses, Blob Stores
-    - Blob Store: Containers of the same data type but stored in an unstructured way (i.e. mp4, jpg, .txt). There is no file hierarchy, but this data usually cannot be stored in a database. Blob Stores are designed to scale very well and can handle massive amounts of data.
-3. Transform Data: logs, metrics, % users doing X action
+## Contents
 
-#### Important things to consider
-1. Design mistakes are very hard to fix in the future. Making good design choices the first time around (before the project is deployed at scale and servicing customers) is extremely important to ensure your service can be sustained when experiencing growth.
-2. How much availability (uptime) does the service require? What cost comes with increased uptime? Are there diminishing returns to increasing the uptime? 
-    - Generally, an increase from 99% uptime to 99.9% uptime may cost as much as it did to go from 95% uptime to 99% uptime. The closer you get to 100%, the costs increase exponentially.
-    - 99% uptime  = 3.65 days down per year
-    - 99.9% uptime = 5.5 minutes down per year
-    - Question to consider: How many years of saving the money lost from those 3.65 days of downtime would it take to cover the price of an upgrade?
+1. [Scaling Systems](#1-scaling-systems)
+2. [The Three Core Design Operations](#2-the-three-core-design-operations)
+3. [Availability & Uptime](#3-availability--uptime)
+4. [Reliability, Fault Tolerance & Redundancy](#4-reliability-fault-tolerance--redundancy)
+5. [Throughput & Latency](#5-throughput--latency)
 
-#### Reliabilty, Fault Tolerance, Redundancy
-- Reliability: Probability the system won't fail
-    - More server (horizontally scaled) usually means increased reliability due to the increase in request capacity (bandwidth)
-- Fault tolerance: System will still function during faults
-    - multiple servers allows for service to continue if/when one of them goes down
-- Redundancy: more servers in different locations
-    - This is part of fault tolerance, but also provides more options for people connecting from different parts of the world. Or, for example, if you have servers in Vancouver, Los Angeles, and Toronto, someone on the West Coast of Canada could easily connect to the Vancouver or Los Angeles server if one of them is slower than the other or one goes down temporarily.
-- Throughput: # requests (load) over a period of time that the server(s) can handle
-    - *horizontal scaling* works best here since a single server can only be upgraded so many times with *vertical scaling*. Plus, it removes the one single failure point discussed earlier.
-    - database throughput: queries/second
-    - important to know data transfer capacity and processing capacity per second
-- Latency: period of time it takes to omplete an operation (usually in terms of end-end time)
-    - i.e. takes 1 second for user to receive response from user (end-end time)
-    - Also hardware latency to consider
-        - Cached items will always be received and transmitted faster than items sitting in RAM or even in long-term storage such as on a disk or SSD
-    - Servers in different locations = less latency for users connecting. Can use DNS to route them to the closest (or fastest) server(s).
+---
+
+## 1. Scaling Systems
+
+As a product grows in popularity, its underlying system must handle increasingly more traffic. There are two primary strategies for scaling a system: **vertical** and **horizontal** scaling.
+
+### Vertical Scaling (Scale Up)
+
+Vertical scaling means **upgrading the hardware of a single existing server** — adding more CPU cores, more RAM, a faster network card, or a faster storage drive.
+
+**Pros:**
+- Simple to implement — no changes to application code required
+- No network overhead between multiple machines
+
+**Cons:**
+- Hard physical ceiling — there's only so powerful a single machine can get
+- Creates a **single point of failure**: if that one server goes down, service is completely unavailable
+- Expensive at higher tiers with diminishing returns
+
+### Horizontal Scaling (Scale Out)
+
+Horizontal scaling means **adding more servers** to share the load. A **load balancer** sits in front of those servers and routes each incoming request to whichever server currently has the smallest load.
+
+**Pros:**
+- Virtually unlimited capacity — just keep adding servers
+- Adds **redundancy**: if one server fails, the others keep serving traffic
+- Enables **geographic distribution**: deploy servers near users to reduce latency
+
+**Cons:**
+- More complex infrastructure and potentially more complex application code
+- Requires a load balancer (another component to manage)
+- Data consistency challenges across servers (sessions, caches, writes)
+
+<MermaidDiagram
+  chart={`flowchart LR
+    U1["👤 User 1"] --> LB
+    U2["👤 User 2"] --> LB
+    U3["👤 User 3"] --> LB
+    LB["⚖️ Load Balancer"] --> S1["🖥️ Server 1"]
+    LB --> S2["🖥️ Server 2"]
+    LB --> S3["🖥️ Server 3"]
+    LB -. adds more .-> SN["🖥️ Server N"]
+    S1 & S2 & S3 --> DB[("🗄️ Database")]
+    style SN stroke-dasharray: 5 5`}
+  caption="Horizontal scaling — a load balancer distributes traffic across multiple servers; more servers can be added at any time"
+/>
+
+<Callout type="tip" title="Why Horizontal Scaling Wins">
+  Horizontal scaling is almost always preferred in production systems. It not only increases total capacity but also adds **redundancy** — if Server 1 crashes, Servers 2 and 3 keep serving users without interruption. Vertical scaling creates a single point of failure: one very powerful machine going down means complete outage.
+</Callout>
+
+### Load Balancers
+
+A **load balancer** is a program (or dedicated service) that:
+
+- Accepts all incoming requests from users
+- Tracks the current load (number of active requests) on each backend server
+- Forwards each new request to the server with the smallest current load
+- Performs **health checks** and stops routing to unhealthy/down servers
+
+Popular load balancers: **Nginx**, **HAProxy**, **AWS Elastic Load Balancing (ELB)**, **Google Cloud Load Balancing**.
+
+---
+
+## 2. The Three Core Design Operations
+
+Every system — regardless of complexity — can be described in terms of three fundamental operations:
+
+<MermaidDiagram
+  chart={`flowchart LR
+    CORE["🏗️ System Design"] --> MOVE["📤 Move Data"]
+    CORE --> STORE["💾 Store Data"]
+    CORE --> TRANSFORM["🔄 Transform Data"]
+
+    MOVE --> M1["Computer to Computer"]
+    MOVE --> M2["Server to Server"]
+
+    STORE --> ST1["SQL / NoSQL Databases"]
+    STORE --> ST2["Blob Stores"]
+    STORE --> ST3["Data Structures"]
+
+    TRANSFORM --> T1["Logs"]
+    TRANSFORM --> T2["Metrics"]
+    TRANSFORM --> T3["Analytics"]`}
+  caption="Every system design problem reduces to some combination of moving, storing, and transforming data"
+/>
+
+### Move Data
+
+Moving data means transmitting information from one place to another — between processes on the same machine, between computers on a local network, or across the internet between a client and a server.
+
+Core protocols: **HTTP/HTTPS** (request-response), **WebSockets** (persistent bi-directional), **TCP** (reliable), **UDP** (fast, lossy).
+
+### Store Data
+
+Data storage is about persisting information durably so it can be retrieved later.
+
+| Storage Type | Description | Best For |
+|---|---|---|
+| **SQL Database** | Structured, relational data with ACID guarantees | Transactions, user accounts, orders |
+| **NoSQL Database** | Flexible schemas, built for horizontal scale | Unstructured, high-volume, or graph data |
+| **Blob Store** | Unstructured binary objects stored by key | Images, videos, files, backups |
+| **Data Structures** | In-memory BSTs, arrays, hash maps | Caching, search indices, leaderboards |
+
+#### What is a Blob Store?
+
+A **Blob Store** (Binary Large Object Store) is designed for **unstructured data** — files like `.mp4`, `.jpg`, `.pdf`, and `.txt`. Key characteristics:
+
+- **No file hierarchy** — a flat namespace where each object has a unique key
+- Cannot be queried or searched like a database
+- Designed to scale to **petabytes of data** at low cost
+- Optimized for large sequential reads and writes
+
+Examples: **Amazon S3**, **Google Cloud Storage**, **Azure Blob Storage**.
+
+### Transform Data
+
+Transforming data means processing raw inputs into useful, derived outputs:
+
+- **Logs**: Time-series records of system events (every log entry has a timestamp). Used for debugging, auditing, and tracing.
+- **Metrics**: Aggregate measurements over time — average response time, error rate, CPU utilization.
+- **Analytics**: Higher-level business insights derived from data — "15% of users click this button", "revenue is up 8% this week".
+
+---
+
+## 3. Availability & Uptime
+
+**Availability** is the percentage of time a system is operational and accessible. It is one of the most important requirements to nail down early in any system design discussion.
+
+### The "Nines" of Availability
+
+Availability is commonly expressed as a count of "nines" — the number of 9s in the percentage:
+
+| Uptime | Downtime / Year | Downtime / Month | Common Name |
+|---|---|---|---|
+| **99%** | 3.65 days | 7.2 hours | Two nines |
+| **99.9%** | 8.77 hours | 43.8 minutes | Three nines |
+| **99.99%** | 52.6 minutes | 4.38 minutes | Four nines |
+| **99.999%** | 5.26 minutes | 26.3 seconds | Five nines |
+| **99.9999%** | 31.6 seconds | 2.6 seconds | Six nines |
+
+<Callout type="warning" title="Diminishing Returns on Uptime">
+  Going from **99% → 99.9%** uptime can cost as much as going from **95% → 99%**. Each additional "nine" requires exponentially more engineering investment. Before demanding high availability, ask: *"How many years of revenue saved from reduced downtime would it take to cover the cost of reaching the next tier?"*
+</Callout>
+
+<Callout type="note" title="Questions to Ask About Availability Requirements">
+  <ul>
+    <li>How much does each hour of downtime actually cost the business (revenue, reputation)?</li>
+    <li>What SLA (Service Level Agreement) do customers expect or have contractually?</li>
+    <li>Is the system mission-critical (healthcare, finance) or best-effort (content streaming)?</li>
+    <li>Are there scheduled maintenance windows that count against uptime?</li>
+  </ul>
+</Callout>
+
+<Callout type="important" title="Design Mistakes Are Expensive to Fix Later">
+  System design decisions made early — before a product is at scale — are very hard to reverse once the system is deployed and serving millions of users. Getting the architecture right **before launch** is critical. Retrofitting a poorly-chosen database, splitting a monolith into microservices, or adding geographic redundancy after the fact are all extremely costly and risky.
+</Callout>
+
+---
+
+## 4. Reliability, Fault Tolerance & Redundancy
+
+These three concepts are closely related and work together to keep systems available even when individual components fail.
+
+### Reliability
+
+**Reliability** is the probability that a system performs its intended function correctly without failure over a given time period.
+
+- A single server with no redundancy is maximally unreliable — one hardware fault and the service is gone
+- Adding more servers (horizontal scaling) increases total request capacity, which also increases overall reliability
+- Reliability is not just about uptime — it also includes **correctness**: the system should return accurate results, not just stay online
+
+### Fault Tolerance
+
+**Fault tolerance** is the ability of a system to **continue functioning correctly** even when one or more of its components fail.
+
+- Multiple servers: if Server 1 crashes, Servers 2 and 3 continue serving users
+- The service **degrades gracefully** rather than going completely offline
+- Requires health checks, circuit breakers, and automatic failover mechanisms
+
+### Redundancy
+
+**Redundancy** means having **backup capacity** that activates when primary capacity fails. This includes:
+
+- **Server redundancy**: multiple identical servers behind a load balancer
+- **Database replication**: primary + replica databases; if the primary fails, a replica is promoted
+- **Geographic redundancy**: servers in multiple data centers/regions
+
+<MermaidDiagram
+  chart={`flowchart LR
+    DNS["🌐 Global DNS / CDN"] --> West
+    DNS --> East
+
+    subgraph West["🌄 North America West"]
+      LB_W["Load Balancer"] --> S_W1["Server (Vancouver)"]
+      LB_W --> S_W2["Server (Los Angeles)"]
+    end
+
+    subgraph East["🌇 North America East"]
+      LB_E["Load Balancer"] --> S_E1["Server (Toronto)"]
+      LB_E --> S_E2["Server (New York)"]
+    end
+
+    U_W["West Coast Users"] --> DNS
+    U_E["East Coast Users"] --> DNS`}
+  caption="Geographic redundancy — users are routed to the nearest region; if one region fails, DNS redirects traffic to another"
+/>
+
+<Callout type="info" title="Geographic Distribution and DNS Routing">
+  DNS can return different IP addresses based on the user's location, routing them to the nearest server. This is how **CDNs** (Content Delivery Networks) and multi-region deployments achieve low global latency. If the Vancouver server goes down, DNS automatically starts routing West Coast users to Los Angeles instead.
+</Callout>
+
+---
+
+## 5. Throughput & Latency
+
+### Throughput
+
+**Throughput** is the number of operations a system can handle **per unit of time**. It's commonly measured as:
+
+- **Requests per second (RPS)** — for web/API servers
+- **Queries per second (QPS)** — for databases
+- **Bytes per second (MB/s or Gbps)** — for network or storage throughput
+
+Horizontal scaling is the most effective way to increase throughput because each additional server adds roughly linear capacity. Vertical scaling has a hard ceiling and yields diminishing returns at higher tiers.
+
+<Callout type="note" title="Database Throughput">
+  When designing a system, always consider **data transfer capacity** and **processing capacity** per second separately. A high-throughput web tier can still be bottlenecked by a low-QPS database. This is why database design — indexing, sharding, caching — is a core part of system design.
+</Callout>
+
+### Latency
+
+**Latency** is the total time it takes to complete an operation from start to finish, measured as **end-to-end time**.
+
+For example: a user clicks a button at `t=0` and receives a response at `t=1s` → **latency = 1 second**.
+
+#### Factors That Affect Latency
+
+1. **Geographic distance** — the speed of light is a real constraint. Data traveling across continents adds 50–150ms of unavoidable latency.
+2. **Network hops** — each router or switch between client and server adds a small delay.
+3. **Server processing time** — CPU computation, database queries, external API calls.
+4. **Storage tier** — where the data lives in the hardware hierarchy (see below).
+
+#### Hardware Latency Hierarchy
+
+The type of storage used to retrieve data has a massive impact on latency. Each tier in the hardware hierarchy is orders of magnitude slower than the one above it:
+
+<MermaidDiagram
+  chart={`flowchart TB
+    C["⚡ CPU Cache\n~1 nanosecond"] -->|"~100× slower"| R
+    R["🧠 RAM"] -->|"~1,000× slower"| S
+    S["💾 SSD / Flash"] -->|"~100× slower"| H
+    H["🗄️ HDD / Disk\n~10 milliseconds"]`}
+  caption="Hardware latency hierarchy — each layer is orders of magnitude slower than the one above; cache is ~10 million times faster than HDD"
+/>
+
+| Storage Tier | Typical Latency | Notes |
+|---|---|---|
+| **CPU Cache (L1/L2/L3)** | ~1 nanosecond | Stored on the chip itself |
+| **RAM (Memory)** | ~100 nanoseconds | Fast but volatile (lost on power off) |
+| **SSD (Flash Storage)** | ~100 microseconds | Persistent, ~1,000× slower than RAM |
+| **HDD (Spinning Disk)** | ~10 milliseconds | Cheapest per GB, but ~100× slower than SSD |
+
+<Callout type="tip" title="Caching = Trading Storage Cost for Lower Latency">
+  A fundamental system design pattern is **caching** — storing frequently accessed data in a faster storage tier so subsequent requests skip the slow path entirely. For example, caching database query results in Redis (in-memory) means reads that would take 10ms from disk now take under 1ms. This can be the difference between a snappy and a sluggish user experience.
+</Callout>
+
+---
+
+## Summary
+
+| Concept | Key Takeaway |
+|---|---|
+| **Vertical Scaling** | Upgrade one server — simple but limited and a single point of failure |
+| **Horizontal Scaling** | Add more servers + load balancer — scalable, redundant, preferred |
+| **Move / Store / Transform** | The three fundamental operations in every system |
+| **Blob Store** | Unstructured binary storage (S3-style) — scales massively, not queryable |
+| **Availability** | Measured in "nines" — each extra nine costs exponentially more |
+| **Reliability** | Probability the system works correctly over time |
+| **Fault Tolerance** | Continues functioning when components fail |
+| **Redundancy** | Backup capacity + geographic distribution |
+| **Throughput** | Operations per second — scale horizontally to increase |
+| **Latency** | End-to-end time — minimize with caching and geographic proximity |

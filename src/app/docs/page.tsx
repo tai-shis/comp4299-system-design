@@ -1,11 +1,18 @@
-// I think this is how to do it? Not sure tbh. 
-// No red squigglies in VSCode though
-import Docs from '@/markdown/docs.mdx';
+import type { Metadata } from 'next';
+import PageLayout from '@/components/PageLayout';
+import DocsMDX from '@/markdown/docs.mdx';
 
-export default function Page() {
+export const metadata: Metadata = {
+  title: 'Docs',
+  description: 'COMP 4299 System Design course documentation and resource overview.',
+};
+
+export default function DocsPage() {
   return (
-    <div className="">
-      <Docs />
-    </div>
-  )
+    <PageLayout>
+      <article className="prose prose-invert max-w-none prose-p:text-gray-300 prose-headings:font-bold prose-a:text-blue-400 prose-strong:text-white prose-li:text-gray-300">
+        <DocsMDX />
+      </article>
+    </PageLayout>
+  );
 }
