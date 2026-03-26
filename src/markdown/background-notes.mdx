@@ -114,12 +114,37 @@ Core protocols: **HTTP/HTTPS** (request-response), **WebSockets** (persistent bi
 
 Data storage is about persisting information durably so it can be retrieved later.
 
-| Storage Type | Description | Best For |
-|---|---|---|
-| **SQL Database** | Structured, relational data with ACID guarantees | Transactions, user accounts, orders |
-| **NoSQL Database** | Flexible schemas, built for horizontal scale | Unstructured, high-volume, or graph data |
-| **Blob Store** | Unstructured binary objects stored by key | Images, videos, files, backups |
-| **Data Structures** | In-memory BSTs, arrays, hash maps | Caching, search indices, leaderboards |
+<table>
+  <thead>
+    <tr>
+      <th>Storage Type</th>
+      <th>Description</th>
+      <th>Best For</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>SQL Database</strong></td>
+      <td>Structured, relational data with ACID guarantees</td>
+      <td>Transactions, user accounts, orders</td>
+    </tr>
+    <tr>
+      <td><strong>NoSQL Database</strong></td>
+      <td>Flexible schemas, built for horizontal scale</td>
+      <td>Unstructured, high-volume, or graph data</td>
+    </tr>
+    <tr>
+      <td><strong>Blob Store</strong></td>
+      <td>Unstructured binary objects stored by key</td>
+      <td>Images, videos, files, backups</td>
+    </tr>
+    <tr>
+      <td><strong>Data Structures</strong></td>
+      <td>In-memory BSTs, arrays, hash maps</td>
+      <td>Caching, search indices, leaderboards</td>
+    </tr>
+  </tbody>
+</table>
 
 #### What is a Blob Store?
 
@@ -150,13 +175,48 @@ Transforming data means processing raw inputs into useful, derived outputs:
 
 Availability is commonly expressed as a count of "nines" — the number of 9s in the percentage:
 
-| Uptime | Downtime / Year | Downtime / Month | Common Name |
-|---|---|---|---|
-| **99%** | 3.65 days | 7.2 hours | Two nines |
-| **99.9%** | 8.77 hours | 43.8 minutes | Three nines |
-| **99.99%** | 52.6 minutes | 4.38 minutes | Four nines |
-| **99.999%** | 5.26 minutes | 26.3 seconds | Five nines |
-| **99.9999%** | 31.6 seconds | 2.6 seconds | Six nines |
+<table>
+  <thead>
+    <tr>
+      <th>Uptime</th>
+      <th>Downtime / Year</th>
+      <th>Downtime / Month</th>
+      <th>Common Name</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>99%</strong></td>
+      <td>3.65 days</td>
+      <td>7.2 hours</td>
+      <td>Two nines</td>
+    </tr>
+    <tr>
+      <td><strong>99.9%</strong></td>
+      <td>8.77 hours</td>
+      <td>43.8 minutes</td>
+      <td>Three nines</td>
+    </tr>
+    <tr>
+      <td><strong>99.99%</strong></td>
+      <td>52.6 minutes</td>
+      <td>4.38 minutes</td>
+      <td>Four nines</td>
+    </tr>
+    <tr>
+      <td><strong>99.999%</strong></td>
+      <td>5.26 minutes</td>
+      <td>26.3 seconds</td>
+      <td>Five nines</td>
+    </tr>
+    <tr>
+      <td><strong>99.9999%</strong></td>
+      <td>31.6 seconds</td>
+      <td>2.6 seconds</td>
+      <td>Six nines</td>
+    </tr>
+  </tbody>
+</table>
 
 <Callout type="warning" title="Diminishing Returns on Uptime">
   Going from **99% → 99.9%** uptime can cost as much as going from **95% → 99%**. Each additional "nine" requires exponentially more engineering investment. Before demanding high availability, ask: *"How many years of revenue saved from reduced downtime would it take to cover the cost of reaching the next tier?"*
@@ -273,12 +333,37 @@ The type of storage used to retrieve data has a massive impact on latency. Each 
   caption="Hardware latency hierarchy — each layer is orders of magnitude slower than the one above; cache is ~10 million times faster than HDD"
 />
 
-| Storage Tier | Typical Latency | Notes |
-|---|---|---|
-| **CPU Cache (L1/L2/L3)** | ~1 nanosecond | Stored on the chip itself |
-| **RAM (Memory)** | ~100 nanoseconds | Fast but volatile (lost on power off) |
-| **SSD (Flash Storage)** | ~100 microseconds | Persistent, ~1,000× slower than RAM |
-| **HDD (Spinning Disk)** | ~10 milliseconds | Cheapest per GB, but ~100× slower than SSD |
+<table>
+  <thead>
+    <tr>
+      <th>Storage Tier</th>
+      <th>Typical Latency</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>CPU Cache (L1/L2/L3)</strong></td>
+      <td>~1 nanosecond</td>
+      <td>Stored on the chip itself</td>
+    </tr>
+    <tr>
+      <td><strong>RAM (Memory)</strong></td>
+      <td>~100 nanoseconds</td>
+      <td>Fast but volatile (lost on power off)</td>
+    </tr>
+    <tr>
+      <td><strong>SSD (Flash Storage)</strong></td>
+      <td>~100 microseconds</td>
+      <td>Persistent, ~1,000× slower than RAM</td>
+    </tr>
+    <tr>
+      <td><strong>HDD (Spinning Disk)</strong></td>
+      <td>~10 milliseconds</td>
+      <td>Cheapest per GB, but ~100× slower than SSD</td>
+    </tr>
+  </tbody>
+</table>
 
 <Callout type="tip" title="Caching = Trading Storage Cost for Lower Latency">
   A fundamental system design pattern is **caching** — storing frequently accessed data in a faster storage tier so subsequent requests skip the slow path entirely. For example, caching database query results in Redis (in-memory) means reads that would take 10ms from disk now take under 1ms. This can be the difference between a snappy and a sluggish user experience.
@@ -288,15 +373,53 @@ The type of storage used to retrieve data has a massive impact on latency. Each 
 
 ## Summary
 
-| Concept | Key Takeaway |
-|---|---|
-| **Vertical Scaling** | Upgrade one server — simple but limited and a single point of failure |
-| **Horizontal Scaling** | Add more servers + load balancer — scalable, redundant, preferred |
-| **Move / Store / Transform** | The three fundamental operations in every system |
-| **Blob Store** | Unstructured binary storage (S3-style) — scales massively, not queryable |
-| **Availability** | Measured in "nines" — each extra nine costs exponentially more |
-| **Reliability** | Probability the system works correctly over time |
-| **Fault Tolerance** | Continues functioning when components fail |
-| **Redundancy** | Backup capacity + geographic distribution |
-| **Throughput** | Operations per second — scale horizontally to increase |
-| **Latency** | End-to-end time — minimize with caching and geographic proximity |
+<table>
+  <thead>
+    <tr>
+      <th>Concept</th>
+      <th>Key Takeaway</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Vertical Scaling</strong></td>
+      <td>Upgrade one server — simple but limited and a single point of failure</td>
+    </tr>
+    <tr>
+      <td><strong>Horizontal Scaling</strong></td>
+      <td>Add more servers + load balancer — scalable, redundant, preferred</td>
+    </tr>
+    <tr>
+      <td><strong>Move / Store / Transform</strong></td>
+      <td>The three fundamental operations in every system</td>
+    </tr>
+    <tr>
+      <td><strong>Blob Store</strong></td>
+      <td>Unstructured binary storage (S3-style) — scales massively, not queryable</td>
+    </tr>
+    <tr>
+      <td><strong>Availability</strong></td>
+      <td>Measured in "nines" — each extra nine costs exponentially more</td>
+    </tr>
+    <tr>
+      <td><strong>Reliability</strong></td>
+      <td>Probability the system works correctly over time</td>
+    </tr>
+    <tr>
+      <td><strong>Fault Tolerance</strong></td>
+      <td>Continues functioning when components fail</td>
+    </tr>
+    <tr>
+      <td><strong>Redundancy</strong></td>
+      <td>Backup capacity + geographic distribution</td>
+    </tr>
+    <tr>
+      <td><strong>Throughput</strong></td>
+      <td>Operations per second — scale horizontally to increase</td>
+    </tr>
+    <tr>
+      <td><strong>Latency</strong></td>
+      <td>End-to-end time — minimize with caching and geographic proximity</td>
+    </tr>
+  </tbody>
+</table>
