@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 import PageLayout from '@/components/PageLayout';
-import APIs from '@/markdown/network-apis.mdx';
+import NetworkAPIs from '@/markdown/network-apis.mdx';
 
 export const metadata: Metadata = {
-  title: 'APIs',
+  title: 'Network-APIs',
   description: 'HTTP, Sockets, Encryption, and Network Layers involved in API usage.',
 };
 
@@ -30,7 +30,7 @@ export default function YourPage() {
           'prose-hr:border-gray-800 prose-hr:my-12',
         ].join(' ')}
       >
-        <APIs />
+        <NetworkAPIs />
       </article>
     </PageLayout>
   );
