@@ -50,14 +50,14 @@ export const chapters: Chapter[] = [
     ],
   },
   {
-    id: 'network-api',
+    id: 'networking',
     number: 2,
-    title: 'Networks and APIs',
+    title: 'Networking',
     description: 'OSI Layers, TCP & UDP, DNS, sockets, and API usage in system design and maintenance',
     pages: [
       {
         title: 'Networking',
-        href: '/network-apis',
+        href: '/networking',
         description: 'Networking basics, TCP, UDP, HTTP, and DNS',
         tags: ['networking', 'sockets', 'http', 'network layers']
       },
