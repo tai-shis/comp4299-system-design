@@ -43,10 +43,30 @@ export const chapters: Chapter[] = [
     pages: [
       {
         title: 'Background Notes',
-        href: '/background-notes',
+        href: '/docs/background-notes',
         description: 'Scaling, availability, reliability, fault tolerance, throughput & latency',
         tags: ['scaling', 'latency', 'reliability'],
       },
+    ],
+  },
+  {
+    id: 'apis',
+    number: 3,
+    title: 'APIs',
+    description: 'Designing APIs: REST, GraphQL, gRPC, versioning, and documentation.',
+    pages: [
+      {
+        title: 'API Paradigms',
+        href: '/docs/apis/paradigms',
+        description: 'REST, GraphQL, gRPC: paradigms, pros & cons, and use cases',
+        tags: ['rest', 'graphql', 'grpc'],
+      },
+      {
+        title: 'API Design Principles',
+        href: '/docs/apis/design-principles',
+        description: 'Best practices for designing robust, user-friendly APIs',
+        wip: true,
+      }
     ],
   },
   // ─── Add future chapters below ────────────────────────────────────────────
