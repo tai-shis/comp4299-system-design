@@ -57,7 +57,7 @@ export const chapters: Chapter[] = [
     pages: [
       {
         title: 'Networking',
-        href: '/apis',
+        href: '/network-apis',
         description: 'Networking basics, TCP, UDP, HTTP, and DNS',
         tags: ['networking', 'sockets', 'http', 'network layers']
       },
