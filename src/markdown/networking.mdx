@@ -3,7 +3,9 @@ import Callout from '@/components/Callout';
 
 # Networking Fundamentals
 
-**Resource:** [Neetcode — System Design for Beginners, Background Videos 3–7](https://neetcode.io/courses/system-design-for-beginners/3)
+**Resources:** <br/>
+[Neetcode — System Design for Beginners, Background Videos 3–7](https://neetcode.io/courses/system-design-for-beginners/3) <br/>
+[Hello Interview — Networking Essentials](https://www.hellointerview.com/learn/system-design/core-concepts/networking-essentials)
 
 
 ## Contents
@@ -100,4 +102,33 @@ It is becoming increasingly common to see HTTP/3 traffic. HTTP/3 is the newest v
 UDP is mainly used in situations where transmission time and sending speed is more important than reliably getting every single packet. Video and audio streaming is one example of this as TCP is too slow to reliably transfer data at a high bitrate. HTTP/3 is slowly being adopted as the overall increase in network traffic now has organizations finding ways to reduce server overhead during peak hours. Using UDP also allows for webpages to load faster even with heavy server traffic as long as the client has a stable connection to the web server. 
 
 ## 2. Web Sockets
+[Hello Interview — Networking Essentials](https://www.hellointerview.com/learn/system-design/core-concepts/networking-essentials)
 
+Many applications need real-time communication between the client and server (i.e. bi-directional communication). This is where Web Sockets come in handy!
+
+### What are they?
+Web sockets are a TCP connection between a client and a web server. Normally, HTTP's **request -> response** framework would not allow for this, but sockets change the Application Layer rules to allow servers to push data to clients without requiring a request from the client first. <br/>
+**Note:** This works both ways. The client can also push data to the server without having to wait.
+
+**Example**: <br/>
+In an online board game, Player 1 makes a move. That data is sent to the server, and to ensure Player 2, Player 3, etc... see this move, the server *pushes* (i.e. sends) Player 1's move data to their browser. This is only able to be done on TCP by using web sockets. If regular HTTP was being used, each player would have to request Player 1's move data themselves.
+
+### How connections are established
+1. Client initiates handshake over HTTP using TCP (as seen in the above diagram)
+2. Connection is upgraded to a WebSocket protocol which takes over the initial TCP connection
+
+Client and server can now send messages back and forth without requests until the connection is closed. This is called a **persistent** connection.
+
+<Callout type="important" title="Powerful but Expensive">
+While web sockets are extremely powerful and useful tools, the infrastructure that is required to support them is very expensive. This is due to the overhead of TCP mixed with persistent communication on the web socket. The cost of servers can exponentially increase as services are scaled.
+</Callout>
+
+Take a look at the [Mozilla](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API) and [Google](https://developer.chrome.com/docs/capabilities/web-apis/websocketstream) web sockets API documentation.
+
+### What if bi-directional communication is not required?
+Sometimes when designing systems, you do not need real-time, bi-directional communication between the client and server. This is where **Server Sent Events (SSE)** come into play.
+
+**For example:** <br/>
+An interface that updates stock ticker prices. This interface does not require input from the client to function, so web sockets would be overkill for this scenario (remember the note in red above).
+
+Documentation of SSEs is quite extensive. [Mozilla](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events) is an example of an organization that provides extensive documentation, examples, and tutorials on how these are used in web services and applications.
