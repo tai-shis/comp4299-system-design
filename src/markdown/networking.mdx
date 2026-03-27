@@ -49,6 +49,7 @@ Data is encrypted on HTTP using **SSL** (Secure Sockets Layer) or **TLS** (Trans
 - FIN: A finish packet to initiate connection termination. This is initially (Client -> Server) and then the server sends another FIN packet after sending an ACK back.
 
 ### Structure of HTTP Web Request
+<div className="large-diagram">
 <MermaidDiagram chart={`sequenceDiagram
     participant Browser as Client (Browser)
     participant Server as Web Server
@@ -68,6 +69,7 @@ Data is encrypted on HTTP using **SSL** (Secure Sockets Layer) or **TLS** (Trans
     Server->>Browser: FIN (Server terminates connection)
     Browser->>Server: ACK (Connection is now closed)`
     } />
+</div>
 
 ### A quick note on TCP vs UDP
 It is becoming increasingly common to see HTTP/3 traffic. HTTP/3 is the newest version of HTTP that uses UDP rather than TCP for connections and data transfer. There are some important distinctions to understand, specifically regarding how connections are established.
