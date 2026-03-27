@@ -81,6 +81,7 @@ export const chapters: Chapter[] = [
         description: 'Best practices for designing robust, user-friendly APIs',
         wip: true,
       }
+    ]
   },
   // ─── Add future chapters below ────────────────────────────────────────────
   // {
