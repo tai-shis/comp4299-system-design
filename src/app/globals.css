@@ -25,3 +25,10 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* For Mermaid Diagram sizing */
+.large-diagram svg {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 500px !important; /* Force the sequence diagram to stretch */
+  }

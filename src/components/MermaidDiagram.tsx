@@ -22,7 +22,9 @@ export default function MermaidDiagram({ chart, caption }: MermaidDiagramProps) 
       if (cancelled) return;
 
       mermaid.initialize({
-        startOnLoad: false,
+        startOnLoad: true,
+        flowchart: { useMaxWidth: true, htmlLabels: true},
+        sequence: {useMaxWidth: true},
         theme: 'dark',
         darkMode: true,
         fontFamily: 'var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif',

@@ -1,0 +1,450 @@
+import MermaidDiagram from '@/components/MermaidDiagram';
+import Callout from '@/components/Callout';
+
+# API Paradigms
+
+**Resource:** [Neetcode — System Design for Beginners, Background Video 8](https://neetcode.io/courses/system-design-for-beginners/8)
+
+These notes cover the three major paradigms for designing APIs — REST, GraphQL, and gRPC. Each paradigm sits on top of HTTP but makes very different trade-offs around flexibility, performance, and developer experience. Knowing when to reach for each one is a core system design skill.
+
+## Contents
+
+1. [Preface — What Is an API?](#0-preface--what-is-an-api)
+2. [REST](#1-rest)
+3. [GraphQL](#2-graphql)
+4. [gRPC](#3-grpc)
+5. [Summary](#summary)
+
+## 0. Preface — What Is an API?
+
+So far we've covered two ways of sending information between a client and a server:
+
+1. **HTTP Requests** — the standard request/response cycle
+2. **WebSockets** — persistent, bidirectional connections for real-time data
+
+When clients need to access or modify data inside an application, they do so through an **Application Programming Interface (API)**. An API is a defined contract that specifies what operations are available, what inputs they accept, and what outputs they return.
+
+**A familiar local example:** the browser's `localStorage` API exposes `localStorage.getItem(key)` and `localStorage.setItem(key, value)`. You don't need to know how the browser physically stores the data — the API abstracts that away entirely.
+
+**In distributed systems**, "API" almost always refers to an **external service** running on another machine that your code talks to over a network. A database is a classic external service: it exposes an API (SQL queries, or a binary driver protocol) for reading and writing data. A web server is another — it exposes an API for handling HTTP requests from browsers and other services.
+
+There are three dominant paradigms for designing these network APIs:
+
+1. [REST](#1-rest) — **Re**presentational **S**tate **T**ransfer
+2. [GraphQL](#2-graphql) — **Graph** **Q**uery **L**anguage
+3. [gRPC](#3-grpc) — **G**oogle **R**emote **P**rocedure **C**all
+
+<div className="large-diagram">
+  <MermaidDiagram
+      chart={`flowchart LR
+        C["🖥️ Client"] -- "API Request" --> API["📡 API Layer"]
+        API -- "API Response" --> C
+        API --> DB[("🗄️ Database")]
+        API --> SVC["🔧 Internal Services"]
+        API -. "REST / GraphQL / gRPC" .-> API`}
+      caption="An API layer sits between clients and backend resources — the paradigm (REST, GraphQL, gRPC) determines how requests and responses are structured"
+  />
+  </div>
+
+## 1. REST
+
+### Representational State Transfer
+
+REST is by far the most widely used API paradigm. It is not a strict protocol — it is an **architectural style** built on top of HTTP. REST defines a loose set of conventions for how to expose resources over HTTP, rather than a rigid specification. That looseness is both its strength and its weakness.
+
+### Statelessness
+
+The most important constraint of REST is that it is **stateless**: every request must contain all the information needed for the server to process it. The server stores no session state between requests.
+
+**Why this matters for scaling:** if the server held per-user session state, a load balancer routing the same user to a different server would break that session. With stateless REST, any server can handle any request — no server "owns" a user's state. Anything that needs to persist between requests lives on the client (cookies, `localStorage`, URL query parameters).
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      U["👤 User"] -- "GET /posts?page=2&limit=10" --> LB["⚖️ Load Balancer"]
+      LB --> S1["🖥️ Server 1"]
+      LB --> S2["🖥️ Server 2"]
+      LB --> S3["🖥️ Server 3"]
+      S1 & S2 & S3 --> DB[("🗄️ Database")]`}
+    caption="Stateless REST: pagination state lives in the URL query string, so any server behind the load balancer can handle the request identically"
+  />
+</div>
+### Resources & HTTP Verbs
+
+REST organises everything around **resources** — the nouns of your system (users, posts, comments, orders). Each resource lives at a URL, and clients interact with it using standard HTTP verbs:
+
+<table>
+  <thead>
+    <tr>
+      <th>Verb</th>
+      <th>Action</th>
+      <th>Example</th>
+      <th>Idempotent?</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>GET</strong></td>
+      <td>Read a resource</td>
+      <td><code>GET /users/42</code></td>
+      <td>✅ Yes</td>
+    </tr>
+    <tr>
+      <td><strong>POST</strong></td>
+      <td>Create a new resource</td>
+      <td><code>POST /users</code></td>
+      <td>❌ No</td>
+    </tr>
+    <tr>
+      <td><strong>PUT</strong></td>
+      <td>Replace a resource entirely</td>
+      <td><code>PUT /users/42</code></td>
+      <td>✅ Yes</td>
+    </tr>
+    <tr>
+      <td><strong>PATCH</strong></td>
+      <td>Partially update a resource</td>
+      <td><code>PATCH /users/42</code></td>
+      <td>✅ Yes</td>
+    </tr>
+    <tr>
+      <td><strong>DELETE</strong></td>
+      <td>Delete a resource</td>
+      <td><code>DELETE /users/42</code></td>
+      <td>✅ Yes</td>
+    </tr>
+  </tbody>
+</table>
+
+Responses are almost always **JSON** — a lightweight, human-readable text format. The server also attaches an **HTTP status code** to signal the outcome of the request:
+
+<table>
+  <thead>
+    <tr>
+      <th>Code</th>
+      <th>Meaning</th>
+      <th>When It's Returned</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>200</strong></td>
+      <td>OK</td>
+      <td>Successful GET, PUT, PATCH, or DELETE</td>
+    </tr>
+    <tr>
+      <td><strong>201</strong></td>
+      <td>Created</td>
+      <td>Successful POST that created a new resource</td>
+    </tr>
+    <tr>
+      <td><strong>400</strong></td>
+      <td>Bad Request</td>
+      <td>Malformed request or invalid input from the client</td>
+    </tr>
+    <tr>
+      <td><strong>401</strong></td>
+      <td>Unauthorized</td>
+      <td>Missing or invalid authentication credentials</td>
+    </tr>
+    <tr>
+      <td><strong>403</strong></td>
+      <td>Forbidden</td>
+      <td>Authenticated but not permitted to access this resource</td>
+    </tr>
+    <tr>
+      <td><strong>404</strong></td>
+      <td>Not Found</td>
+      <td>No resource exists at this URL</td>
+    </tr>
+    <tr>
+      <td><strong>500</strong></td>
+      <td>Internal Server Error</td>
+      <td>Unexpected failure on the server side</td>
+    </tr>
+  </tbody>
+</table>
+
+### REST Request / Response Flow
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+
+      participant C as Client
+      participant S as Server
+
+      C->>S: GET /posts/99/comments
+      S-->>C: 200 OK — full user objects including email, phone, bio, settings...
+      note over C: Client only needed name and avatar — the rest is over-fetching
+
+      C->>S: POST /posts with title and body
+      S-->>C: 201 Created — new post returned with generated id`}
+    caption="REST request/response — the server returns a fixed shape per endpoint, which can include fields the client never uses (over-fetching)"
+  />
+</div>
+
+### Trade-offs
+
+**Pros:**
+- Universally understood — every language and framework has HTTP client support
+- Stateless design makes horizontal scaling straightforward
+- GET responses are HTTP-cacheable by default (browsers, CDNs, and proxies all understand this)
+- Human-readable URLs and JSON make debugging easy without special tooling
+
+**Cons:**
+- **Over-fetching** — the response shape is fixed per endpoint. If a UI only needs a user's name and avatar but the endpoint returns 20 fields, all 20 are sent every time.
+- No built-in real-time support — the only way to get live updates over REST is polling, which wastes bandwidth and adds latency
+- No enforced schema — client and server can silently drift out of sync without a separate contract (like OpenAPI)
+
+<Callout type="tip" title="REST Is the Right Default">
+  REST should be your starting point for almost any public-facing or internal CRUD API. Its ubiquity means excellent tooling (Swagger/OpenAPI), broad client support, and a mental model that every engineer already knows. Only reach for GraphQL or gRPC when REST's trade-offs are actively hurting you.
+</Callout>
+
+## 2. GraphQL
+
+GraphQL is a **query language for APIs** developed by Facebook in 2012 and open-sourced in 2015. Rather than exposing a set of fixed endpoints that each return a fixed shape, GraphQL exposes a **single endpoint** and lets the client declare exactly what data it needs in every request.
+
+Like REST, GraphQL runs over HTTP — but it only uses **POST requests**, with the query sent in the request body rather than encoded in the URL.
+
+### Solving Over-fetching
+
+The core motivation for GraphQL was REST's over-fetching problem. Consider rendering a comment feed where each comment shows only the author's **username and avatar**:
+
+- **With REST:** `GET /comments` returns full user objects for every commenter — email, phone number, bio, account settings — none of which the UI needs.
+- **With GraphQL:** the client sends a query specifying `author { username avatar }` and only those fields are returned.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant C as Client
+      participant G as GraphQL Server
+      participant DB as Database
+
+      C->>G: POST /graphql — query for body, username, avatar only
+      G->>DB: SELECT body, username, avatar FROM comments JOIN users
+      DB-->>G: Matching rows returned
+      G-->>C: 200 OK — only the three requested fields per comment
+      note over C: No extra fields sent — over-fetching eliminated`}
+    caption="GraphQL lets the client specify exactly which fields to return — the server fetches and responds with only those fields"
+  />
+</div>
+
+### Queries, Mutations & Subscriptions
+
+GraphQL operations come in three types:
+
+<table>
+  <thead>
+    <tr>
+      <th>Operation</th>
+      <th>REST Equivalent</th>
+      <th>Purpose</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Query</strong></td>
+      <td>GET</td>
+      <td>Read data — returns only the requested fields</td>
+    </tr>
+    <tr>
+      <td><strong>Mutation</strong></td>
+      <td>POST / PUT / PATCH / DELETE</td>
+      <td>Write data — create, update, or delete resources</td>
+    </tr>
+    <tr>
+      <td><strong>Subscription</strong></td>
+      <td>WebSocket / SSE</td>
+      <td>Push real-time updates to the client when data changes</td>
+    </tr>
+  </tbody>
+</table>
+
+### Trade-offs
+
+**Pros:**
+- Eliminates over-fetching — clients receive exactly what they ask for, nothing more
+- A single request can fetch deeply nested, related data across many resource types (replacing multiple REST round-trips)
+- Strongly-typed schema serves as living documentation and enables tooling like query auto-complete and validation
+- Adding new fields to the schema is non-breaking for existing clients
+
+**Cons:**
+- **Under-fetching can still occur** — if a component needs data it didn't originally request, an additional round-trip is required
+- **HTTP caching is harder** — because all requests are POST to a single URL, standard HTTP cache infrastructure (browsers, CDNs) doesn't apply without extra configuration
+- Higher server complexity — resolvers, DataLoader batching, and schema design require more upfront engineering
+- Overkill for simple services with only a few resource types
+
+<Callout type="warning" title="HTTP Caching Doesn't Work Out of the Box with GraphQL">
+  REST GET requests are cacheable by URL — browsers, CDNs, and reverse proxies all handle this automatically. Because GraphQL uses POST for every operation (even reads), standard HTTP caching ignores those requests. Solutions exist (persisted queries, GET-based reads), but they add meaningful complexity. Factor this in before migrating from REST.
+</Callout>
+
+<Callout type="note" title="When GraphQL Shines">
+  GraphQL is most valuable when you have **multiple clients with different data requirements** — for example, a mobile app that needs a compact summary and a web dashboard that needs rich detail from the same underlying data. Rather than building two REST endpoints or over-fetching on both clients, a single GraphQL schema serves both efficiently.
+</Callout>
+
+## 3. gRPC
+
+gRPC (**Google Remote Procedure Call**) is a high-performance RPC framework open-sourced by Google in 2015. Where REST and GraphQL think in terms of resources and queries, gRPC thinks in terms of **calling a function on a remote machine** as if it were a local function call.
+
+### Built on HTTP/2
+
+gRPC runs specifically on **HTTP/2**, which gives it capabilities unavailable to REST running on HTTP/1.1:
+
+<table>
+  <thead>
+    <tr>
+      <th>Feature</th>
+      <th>HTTP/1.1 (REST)</th>
+      <th>HTTP/2 (gRPC)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Multiplexing</td>
+      <td>❌ One request per connection at a time</td>
+      <td>✅ Many concurrent streams per connection</td>
+    </tr>
+    <tr>
+      <td>Header compression</td>
+      <td>❌ Headers re-sent as plain text every request</td>
+      <td>✅ Headers compressed with HPACK</td>
+    </tr>
+    <tr>
+      <td>Streaming</td>
+      <td>❌ Response-only (chunked transfer)</td>
+      <td>✅ Bidirectional streaming built in</td>
+    </tr>
+    <tr>
+      <td>Browser support</td>
+      <td>✅ Native everywhere</td>
+      <td>⚠️ Requires a gRPC-Web proxy layer</td>
+    </tr>
+  </tbody>
+</table>
+
+<Callout type="note" title="gRPC and WebSockets">
+  Because HTTP/2 supports bidirectional streaming natively, gRPC can cover the same real-time use cases as WebSockets — without a separate protocol upgrade handshake. This is one reason gRPC is preferred for server-to-server communication even in latency-sensitive, streaming scenarios.
+</Callout>
+
+### Protocol Buffers (Protobuf)
+
+Instead of JSON, gRPC uses **Protocol Buffers (Protobuf)** — a compact binary serialization format defined in a `.proto` schema file. The schema specifies the structure of every request and response, and the gRPC toolchain auto-generates type-safe client and server code from it in dozens of languages.
+
+```proto
+// user.proto
+syntax = "proto3";
+
+service UserService {
+  rpc GetUser (GetUserRequest) returns (User);
+}
+
+message GetUserRequest {
+  int32 id = 1;
+}
+
+message User {
+  int32  id    = 1;
+  string name  = 2;
+  string email = 3;
+}
+```
+
+Once the `.proto` file is defined, calling the remote service looks identical to calling a local function in the generated client:
+
+```python
+# Python — calling a remote gRPC function like a local one
+user = stub.GetUser(GetUserRequest(id=42))
+print(user.name)  # "Alice"
+```
+
+### gRPC Request / Response Flow
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant C as Client Service
+      participant S as Server Service
+
+      note over C,S: Both sides share the same .proto contract
+
+      C->>S: GetUser — id 42 — binary Protobuf over HTTP/2
+      S-->>C: User record — name, email — binary Protobuf over HTTP/2
+      note over C: Type-safe and compact — roughly 5 to 10x smaller than JSON`}
+    caption="gRPC uses auto-generated, type-safe clients and compact binary Protobuf encoding over HTTP/2 — significantly faster than JSON over HTTP/1.1"
+  />
+</div>
+
+### Trade-offs
+
+**Pros:**
+- **Significantly faster** than REST — Protobuf binary encoding is ~5–10× smaller and faster to parse than JSON
+- Auto-generated, type-safe clients eliminate an entire class of integration bugs
+- Bidirectional streaming is a first-class feature via HTTP/2
+- Strict `.proto` contract is enforced at code-generation time — breaking changes are caught before deployment
+
+**Cons:**
+- **No native browser support** — gRPC requires low-level HTTP/2 control that browsers don't expose. A gRPC-Web proxy is required for any browser client.
+- Binary encoding is not human-readable — debugging requires dedicated tooling (`grpcurl`, Postman gRPC mode, etc.)
+- Limited built-in error codes — gRPC's status codes are coarser than HTTP's, and richer error detail requires custom metadata
+- Higher setup cost — `.proto` files and code-generation tooling must be integrated into the build pipeline
+
+<Callout type="tip" title="gRPC Is the Default for Internal Microservices">
+  When you control both sides of the connection — as with internal microservices — gRPC is almost always a better choice than REST. You get a stricter contract, better performance, bidirectional streaming, and auto-generated clients. The lack of native browser support is irrelevant for server-to-server communication.
+</Callout>
+
+<Callout type="important" title="API Paradigm Decisions Are Hard to Reverse">
+  Switching paradigms mid-project is painful. REST → GraphQL requires rewriting resolvers and client queries. REST → gRPC requires introducing Protobuf schemas and regenerating all clients. Like database choices, API paradigm decisions made early are expensive to undo once thousands of clients depend on the existing interface — get it right before launch.
+</Callout>
+
+## Summary
+
+<table>
+  <thead>
+    <tr>
+      <th>Concept</th>
+      <th>Key Takeaway</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>REST</strong></td>
+      <td>Stateless, resource-based, JSON over HTTP — the universal default for public APIs</td>
+    </tr>
+    <tr>
+      <td><strong>Statelessness</strong></td>
+      <td>Every request is self-contained — enables horizontal scaling without sticky sessions</td>
+    </tr>
+    <tr>
+      <td><strong>HTTP Verbs</strong></td>
+      <td>GET / POST / PUT / PATCH / DELETE map to read, create, replace, update, delete</td>
+    </tr>
+    <tr>
+      <td><strong>HTTP Status Codes</strong></td>
+      <td>2xx = success, 4xx = client error, 5xx = server error</td>
+    </tr>
+    <tr>
+      <td><strong>Over-fetching</strong></td>
+      <td>REST returns fixed shapes — clients receive fields they don't need</td>
+    </tr>
+    <tr>
+      <td><strong>GraphQL</strong></td>
+      <td>Single endpoint, client-specified queries — eliminates over-fetching, harder to cache</td>
+    </tr>
+    <tr>
+      <td><strong>GraphQL Caching</strong></td>
+      <td>Uses POST for all requests — HTTP-level caching doesn't apply by default</td>
+    </tr>
+    <tr>
+      <td><strong>gRPC</strong></td>
+      <td>Binary Protobuf over HTTP/2 — fastest option, best for internal service-to-service calls</td>
+    </tr>
+    <tr>
+      <td><strong>Protobuf</strong></td>
+      <td>Binary schema format — ~5–10× smaller than JSON, auto-generates type-safe clients</td>
+    </tr>
+    <tr>
+      <td><strong>gRPC Browser Limitation</strong></td>
+      <td>Cannot be used natively in browsers — requires a gRPC-Web proxy layer</td>
+    </tr>
+  </tbody>
+</table>
