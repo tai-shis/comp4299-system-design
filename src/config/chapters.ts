@@ -56,11 +56,18 @@ export const chapters: Chapter[] = [
     description: 'OSI Layers, TCP & UDP, DNS, sockets, and API usage in system design and maintenance',
     pages: [
       {
-        title: 'Networking',
-        href: '/networking',
+        title: 'Networking Basics',
+        href: '/docs/networking/basics',
         description: 'Networking basics, TCP, UDP, HTTP, and DNS',
         tags: ['networking', 'sockets', 'http', 'network layers']
       },
+      {
+        title: 'Web Sockets in Action',
+        href: '/docs/networking/ws-demonstration',
+        description: 'Web socket bi-directional communication video demonstration.',
+        tags: ['web sockets', 'example', 'stock ticker'],
+        wip: true
+      }
     ],
   },
   {
