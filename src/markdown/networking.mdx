@@ -132,3 +132,6 @@ Sometimes when designing systems, you do not need real-time, bi-directional comm
 An interface that updates stock ticker prices. This interface does not require input from the client to function, so web sockets would be overkill for this scenario (remember the note in red above).
 
 Documentation of SSEs is quite extensive. [Mozilla](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events) is an example of an organization that provides extensive documentation, examples, and tutorials on how these are used in web services and applications.
+
+### Connection to previous chapter
+Using web sockets is where load balancing comes into practice. Load balancers (i.e. horizontal scaling) will decide which server will which request. If Server A is getting a bit full, Server B might take this request. Oftentimes, client-side load balancing is done when using web sockets as it takes processing load away from the server. The client-side code will determine which server has the best connection, stability, and least latency. Since it is less likely the client's device is overrun with tasks, this decision process is much faster. 
