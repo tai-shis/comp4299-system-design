@@ -1,19 +1,6 @@
 import MermaidDiagram from '@/components/MermaidDiagram';
 import Callout from '@/components/Callout';
 
-<style>{`
-  .mermaid svg,
-  .mermaid-diagram svg,
-  [class*="mermaid"] svg,
-  [class*="Mermaid"] svg {
-    width: 100% !important;
-    max-width: 100% !important;
-    height: auto !important;
-    min-height: 300px !important;
-  }
-`}</style>
-
-
 # API Paradigms
 
 **Resource:** [Neetcode — System Design for Beginners, Background Video 8](https://neetcode.io/courses/system-design-for-beginners/8)
@@ -47,15 +34,17 @@ There are three dominant paradigms for designing these network APIs:
 2. [GraphQL](#2-graphql) — **Graph** **Q**uery **L**anguage
 3. [gRPC](#3-grpc) — **G**oogle **R**emote **P**rocedure **C**all
 
-<MermaidDiagram
-  chart={`flowchart LR
-    C["🖥️ Client"] -- "API Request" --> API["📡 API Layer"]
-    API -- "API Response" --> C
-    API --> DB[("🗄️ Database")]
-    API --> SVC["🔧 Internal Services"]
-    API -. "REST / GraphQL / gRPC" .-> API`}
-  caption="An API layer sits between clients and backend resources — the paradigm (REST, GraphQL, gRPC) determines how requests and responses are structured"
-/>
+<div className="large-diagram">
+  <MermaidDiagram
+      chart={`flowchart LR
+        C["🖥️ Client"] -- "API Request" --> API["📡 API Layer"]
+        API -- "API Response" --> C
+        API --> DB[("🗄️ Database")]
+        API --> SVC["🔧 Internal Services"]
+        API -. "REST / GraphQL / gRPC" .-> API`}
+      caption="An API layer sits between clients and backend resources — the paradigm (REST, GraphQL, gRPC) determines how requests and responses are structured"
+  />
+  </div>
 
 ## 1. REST
 
@@ -69,16 +58,17 @@ The most important constraint of REST is that it is **stateless**: every request
 
 **Why this matters for scaling:** if the server held per-user session state, a load balancer routing the same user to a different server would break that session. With stateless REST, any server can handle any request — no server "owns" a user's state. Anything that needs to persist between requests lives on the client (cookies, `localStorage`, URL query parameters).
 
-<MermaidDiagram
-  chart={`flowchart LR
-    U["👤 User"] -- "GET /posts?page=2&limit=10" --> LB["⚖️ Load Balancer"]
-    LB --> S1["🖥️ Server 1"]
-    LB --> S2["🖥️ Server 2"]
-    LB --> S3["🖥️ Server 3"]
-    S1 & S2 & S3 --> DB[("🗄️ Database")]`}
-  caption="Stateless REST: pagination state lives in the URL query string, so any server behind the load balancer can handle the request identically"
-/>
-
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      U["👤 User"] -- "GET /posts?page=2&limit=10" --> LB["⚖️ Load Balancer"]
+      LB --> S1["🖥️ Server 1"]
+      LB --> S2["🖥️ Server 2"]
+      LB --> S3["🖥️ Server 3"]
+      S1 & S2 & S3 --> DB[("🗄️ Database")]`}
+    caption="Stateless REST: pagination state lives in the URL query string, so any server behind the load balancer can handle the request identically"
+  />
+</div>
 ### Resources & HTTP Verbs
 
 REST organises everything around **resources** — the nouns of your system (users, posts, comments, orders). Each resource lives at a URL, and clients interact with it using standard HTTP verbs:
@@ -176,20 +166,22 @@ Responses are almost always **JSON** — a lightweight, human-readable text form
 </table>
 
 ### REST Request / Response Flow
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
 
-<MermaidDiagram
-  chart={`sequenceDiagram
-    participant C as Client
-    participant S as Server
+      participant C as Client
+      participant S as Server
 
-    C->>S: GET /posts/99/comments
-    S-->>C: 200 OK — full user objects including email, phone, bio, settings...
-    note over C: Client only needed name and avatar — the rest is over-fetching
+      C->>S: GET /posts/99/comments
+      S-->>C: 200 OK — full user objects including email, phone, bio, settings...
+      note over C: Client only needed name and avatar — the rest is over-fetching
 
-    C->>S: POST /posts with title and body
-    S-->>C: 201 Created — new post returned with generated id`}
-  caption="REST request/response — the server returns a fixed shape per endpoint, which can include fields the client never uses (over-fetching)"
-/>
+      C->>S: POST /posts with title and body
+      S-->>C: 201 Created — new post returned with generated id`}
+    caption="REST request/response — the server returns a fixed shape per endpoint, which can include fields the client never uses (over-fetching)"
+  />
+</div>
 
 ### Trade-offs
 
@@ -221,19 +213,21 @@ The core motivation for GraphQL was REST's over-fetching problem. Consider rende
 - **With REST:** `GET /comments` returns full user objects for every commenter — email, phone number, bio, account settings — none of which the UI needs.
 - **With GraphQL:** the client sends a query specifying `author { username avatar }` and only those fields are returned.
 
-<MermaidDiagram
-  chart={`sequenceDiagram
-    participant C as Client
-    participant G as GraphQL Server
-    participant DB as Database
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant C as Client
+      participant G as GraphQL Server
+      participant DB as Database
 
-    C->>G: POST /graphql — query for body, username, avatar only
-    G->>DB: SELECT body, username, avatar FROM comments JOIN users
-    DB-->>G: Matching rows returned
-    G-->>C: 200 OK — only the three requested fields per comment
-    note over C: No extra fields sent — over-fetching eliminated`}
-  caption="GraphQL lets the client specify exactly which fields to return — the server fetches and responds with only those fields"
-/>
+      C->>G: POST /graphql — query for body, username, avatar only
+      G->>DB: SELECT body, username, avatar FROM comments JOIN users
+      DB-->>G: Matching rows returned
+      G-->>C: 200 OK — only the three requested fields per comment
+      note over C: No extra fields sent — over-fetching eliminated`}
+    caption="GraphQL lets the client specify exactly which fields to return — the server fetches and responds with only those fields"
+  />
+</div>
 
 ### Queries, Mutations & Subscriptions
 
@@ -365,18 +359,20 @@ print(user.name)  # "Alice"
 
 ### gRPC Request / Response Flow
 
-<MermaidDiagram
-  chart={`sequenceDiagram
-    participant C as Client Service
-    participant S as Server Service
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant C as Client Service
+      participant S as Server Service
 
-    note over C,S: Both sides share the same .proto contract
+      note over C,S: Both sides share the same .proto contract
 
-    C->>S: GetUser — id 42 — binary Protobuf over HTTP/2
-    S-->>C: User record — name, email — binary Protobuf over HTTP/2
-    note over C: Type-safe and compact — roughly 5 to 10x smaller than JSON`}
-  caption="gRPC uses auto-generated, type-safe clients and compact binary Protobuf encoding over HTTP/2 — significantly faster than JSON over HTTP/1.1"
-/>
+      C->>S: GetUser — id 42 — binary Protobuf over HTTP/2
+      S-->>C: User record — name, email — binary Protobuf over HTTP/2
+      note over C: Type-safe and compact — roughly 5 to 10x smaller than JSON`}
+    caption="gRPC uses auto-generated, type-safe clients and compact binary Protobuf encoding over HTTP/2 — significantly faster than JSON over HTTP/1.1"
+  />
+</div>
 
 ### Trade-offs
 

@@ -50,19 +50,21 @@ Horizontal scaling means **adding more servers** to share the load. A **load bal
 - Requires a load balancer (another component to manage)
 - Data consistency challenges across servers (sessions, caches, writes)
 
-<MermaidDiagram
-  chart={`flowchart LR
-    U1["👤 User 1"] --> LB
-    U2["👤 User 2"] --> LB
-    U3["👤 User 3"] --> LB
-    LB["⚖️ Load Balancer"] --> S1["🖥️ Server 1"]
-    LB --> S2["🖥️ Server 2"]
-    LB --> S3["🖥️ Server 3"]
-    LB -. adds more .-> SN["🖥️ Server N"]
-    S1 & S2 & S3 --> DB[("🗄️ Database")]
-    style SN stroke-dasharray: 5 5`}
-  caption="Horizontal scaling — a load balancer distributes traffic across multiple servers; more servers can be added at any time"
-/>
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      U1["👤 User 1"] --> LB
+      U2["👤 User 2"] --> LB
+      U3["👤 User 3"] --> LB
+      LB["⚖️ Load Balancer"] --> S1["🖥️ Server 1"]
+      LB --> S2["🖥️ Server 2"]
+      LB --> S3["🖥️ Server 3"]
+      LB -. adds more .-> SN["🖥️ Server N"]
+      S1 & S2 & S3 --> DB[("🗄️ Database")]
+      style SN stroke-dasharray: 5 5`}
+    caption="Horizontal scaling — a load balancer distributes traffic across multiple servers; more servers can be added at any time"
+  />
+</div>
 
 <Callout type="tip" title="Why Horizontal Scaling Wins">
   Horizontal scaling is almost always preferred in production systems. It not only increases total capacity but also adds **redundancy** — if Server 1 crashes, Servers 2 and 3 keep serving users without interruption. Vertical scaling creates a single point of failure: one very powerful machine going down means complete outage.
@@ -85,25 +87,26 @@ Popular load balancers: **Nginx**, **HAProxy**, **AWS Elastic Load Balancing (EL
 
 Every system — regardless of complexity — can be described in terms of three fundamental operations:
 
-<MermaidDiagram
-  chart={`flowchart LR
-    CORE["🏗️ System Design"] --> MOVE["📤 Move Data"]
-    CORE --> STORE["💾 Store Data"]
-    CORE --> TRANSFORM["🔄 Transform Data"]
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      CORE["🏗️ System Design"] --> MOVE["📤 Move Data"]
+      CORE --> STORE["💾 Store Data"]
+      CORE --> TRANSFORM["🔄 Transform Data"]
 
-    MOVE --> M1["Computer to Computer"]
-    MOVE --> M2["Server to Server"]
+      MOVE --> M1["Computer to Computer"]
+      MOVE --> M2["Server to Server"]
 
-    STORE --> ST1["SQL / NoSQL Databases"]
-    STORE --> ST2["Blob Stores"]
-    STORE --> ST3["Data Structures"]
+      STORE --> ST1["SQL / NoSQL Databases"]
+      STORE --> ST2["Blob Stores"]
+      STORE --> ST3["Data Structures"]
 
-    TRANSFORM --> T1["Logs"]
-    TRANSFORM --> T2["Metrics"]
-    TRANSFORM --> T3["Analytics"]`}
-  caption="Every system design problem reduces to some combination of moving, storing, and transforming data"
-/>
-
+      TRANSFORM --> T1["Logs"]
+      TRANSFORM --> T2["Metrics"]
+      TRANSFORM --> T3["Analytics"]`}
+    caption="Every system design problem reduces to some combination of moving, storing, and transforming data"
+  />
+</div>
 ### Move Data
 
 Moving data means transmitting information from one place to another — between processes on the same machine, between computers on a local network, or across the internet between a client and a server.
@@ -265,6 +268,7 @@ These three concepts are closely related and work together to keep systems avail
 - **Database replication**: primary + replica databases; if the primary fails, a replica is promoted
 - **Geographic redundancy**: servers in multiple data centers/regions
 
+<div className="large-diagram">
 <MermaidDiagram
   chart={`flowchart LR
     DNS["🌐 Global DNS / CDN"] --> West
@@ -284,6 +288,7 @@ These three concepts are closely related and work together to keep systems avail
     U_E["East Coast Users"] --> DNS`}
   caption="Geographic redundancy — users are routed to the nearest region; if one region fails, DNS redirects traffic to another"
 />
+</div>
 
 <Callout type="info" title="Geographic Distribution and DNS Routing">
   DNS can return different IP addresses based on the user's location, routing them to the nearest server. This is how **CDNs** (Content Delivery Networks) and multi-region deployments achieve low global latency. If the Vancouver server goes down, DNS automatically starts routing West Coast users to Los Angeles instead.
@@ -324,6 +329,7 @@ For example: a user clicks a button at `t=0` and receives a response at `t=1s` �
 
 The type of storage used to retrieve data has a massive impact on latency. Each tier in the hardware hierarchy is orders of magnitude slower than the one above it:
 
+<div className="large-diagram">
 <MermaidDiagram
   chart={`flowchart TB
     C["⚡ CPU Cache\n~1 nanosecond"] -->|"~100× slower"| R
@@ -332,6 +338,7 @@ The type of storage used to retrieve data has a massive impact on latency. Each 
     H["🗄️ HDD / Disk\n~10 milliseconds"]`}
   caption="Hardware latency hierarchy — each layer is orders of magnitude slower than the one above; cache is ~10 million times faster than HDD"
 />
+</div>
 
 <table>
   <thead>
