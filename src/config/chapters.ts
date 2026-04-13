@@ -78,8 +78,8 @@ export const chapters: Chapter[] = [
       {
         title: 'API Design Principles',
         href: '/docs/apis/design-principles',
-        description: 'Best practices for designing robust, user-friendly APIs',
-        wip: true,
+        description: 'CRUD, backwards compatibility, versioning, pagination, idempotency, and rate limiting.',
+        tags: ['crud', 'versioning', 'pagination', 'idempotency', 'rate-limiting'],
       }
     ]
   },
