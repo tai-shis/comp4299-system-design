@@ -10,7 +10,7 @@ export function useMDXComponents(): MDXComponents {
       const language = className.replace('language-', '') || 'plaintext';
       const code = String(codeEl?.props?.children ?? '');
       // ShikiCode is an async server component — React RSC handles resolution
-      return <ShikiCode code={code} language={language} /> as unknown as JSX.Element;
+      return <ShikiCode code={code} language={language} /> as unknown as ReactElement;
     },
   }
 }
