@@ -1,0 +1,509 @@
+import MermaidDiagram from '@/components/MermaidDiagram';
+import Callout from '@/components/Callout';
+
+# API Design
+
+**Resource:** [Neetcode — System Design for Beginners, Background Video 9](https://neetcode.io/courses/system-design-for-beginners/9)
+
+These notes cover the fundamentals of API design: how to model entities, structure endpoints, handle backwards compatibility, and apply pagination. The focus is on the *surface area* of an API, meaning what it exposes, what it accepts, and what it promises to return, independent of any implementation detail.
+
+## Contents
+
+1. [What Is API Design?](#1-what-is-api-design)
+2. [Modelling a Notes API](#2-modelling-a-notes-api)
+3. [Backwards Compatibility](#3-backwards-compatibility)
+4. [Versioning](#4-versioning)
+5. [Pagination](#5-pagination)
+6. [Idempotency & Safe Methods](#6-idempotency--safe-methods)
+7. [Rate Limiting](#7-rate-limiting)
+8. [Request & Response Examples](#8-request--response-examples)
+9. [Real-World API Documentation](#9-real-world-api-documentation)
+10. [Summary](#summary)
+
+## 1. What Is API Design?
+
+API design is concerned exclusively with the *surface area* of an API, which is the contract between a service and the developers who consume it. It answers three questions: what operations are available, what inputs do they require, and what will they return?
+
+The underlying implementation (how data is stored, which database is queried, what internal services are called) is entirely out of scope. A well-designed API hides all of that behind a stable, predictable interface.
+
+For any given resource (a *note*, a *user*, an *order*), there are four fundamental operations, collectively known as **CRUD**:
+
+<table>
+  <thead>
+    <tr>
+      <th>Operation</th>
+      <th>HTTP Verb</th>
+      <th>What It Does</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Create</strong></td>
+      <td><code>POST</code></td>
+      <td>Adds a new resource</td>
+    </tr>
+    <tr>
+      <td><strong>Read</strong></td>
+      <td><code>GET</code></td>
+      <td>Retrieves an existing resource</td>
+    </tr>
+    <tr>
+      <td><strong>Update</strong></td>
+      <td><code>PUT</code> / <code>PATCH</code></td>
+      <td>Modifies an existing resource</td>
+    </tr>
+    <tr>
+      <td><strong>Delete</strong></td>
+      <td><code>DELETE</code></td>
+      <td>Removes a resource</td>
+    </tr>
+  </tbody>
+</table>
+
+These operations act on **entities**, which are the nouns of a system. In a notes app, `Note` and `User` are entities. The API's job is to give callers a clean way to create, read, update, and delete them. REST uses HTTP verbs as a convention for expressing intent; other paradigms like gRPC can enforce these semantics more strictly at the schema level.
+
+<Callout type="tip" title="Design the Interface, Not the Implementation">
+  When designing an API, resist the urge to think about databases or internal services. Think only about what a caller needs to send and what they should receive back. A clean separation here is what makes an API genuinely reusable.
+</Callout>
+
+## 2. Modelling a Notes API
+
+To make this concrete, we'll design a simple notes application. A note has the following fields:
+
+<table>
+  <thead>
+    <tr>
+      <th>Field</th>
+      <th>Type</th>
+      <th>Source</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>noteId</code></td>
+      <td><code>string</code></td>
+      <td>Server-generated</td>
+      <td>Unique identifier; assigned on creation</td>
+    </tr>
+    <tr>
+      <td><code>userId</code></td>
+      <td><code>string</code></td>
+      <td>Provided by caller</td>
+      <td>Identifies the note's owner</td>
+    </tr>
+    <tr>
+      <td><code>title</code></td>
+      <td><code>string</code></td>
+      <td>Provided by caller</td>
+      <td>Short display name for the note</td>
+    </tr>
+    <tr>
+      <td><code>content</code></td>
+      <td><code>string</code></td>
+      <td>Provided by caller</td>
+      <td>Body text of the note</td>
+    </tr>
+    <tr>
+      <td><code>tags</code></td>
+      <td><code>string[]</code></td>
+      <td>Provided by caller</td>
+      <td>Optional; defaults to <code>[]</code></td>
+    </tr>
+    <tr>
+      <td><code>sectionId</code></td>
+      <td><code>string</code></td>
+      <td>Provided by caller</td>
+      <td>Optional; groups the note under a section</td>
+    </tr>
+    <tr>
+      <td><code>createdAt</code></td>
+      <td><code>timestamp</code></td>
+      <td>Server-generated</td>
+      <td>Set on creation; never modified</td>
+    </tr>
+    <tr>
+      <td><code>updatedAt</code></td>
+      <td><code>timestamp</code></td>
+      <td>Server-generated</td>
+      <td>Updated on every write</td>
+    </tr>
+  </tbody>
+</table>
+
+Fields like `noteId`, `createdAt`, and `updatedAt` are assigned by the server, so the caller never sends them. Fields like `userId`, `title`, and `content` are supplied by the caller. Optional fields like `tags` and `sectionId` carry sensible defaults, so a caller can omit them without breaking anything.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      subgraph Client
+        REQ["📤 POST /v1.0/note"]
+      end
+      subgraph "Request Body"
+        B["userId\ntitle\ncontent\ntags? (optional)\nsectionId? (optional)"]
+      end
+      subgraph "Response Body"
+        R["noteId ✦ server-generated\nuserId\ntitle\ncontent\ntags\nsectionId\ncreatedAt ✦ server-generated\nupdatedAt ✦ server-generated"]
+      end
+      REQ --> B --> R`}
+    caption="Creating a note: the caller provides the required fields, the server assigns identifiers and timestamps, then returns the complete note object"
+  />
+</div>
+
+The two core read endpoints follow a resource-oriented URL pattern:
+
+- **Single note** — `GET /v1.0/note/:noteId` retrieves a specific note by its ID, typically used when a user opens a note to view or edit its contents.
+- **All notes for a user** — `GET /v1.0/users/:userId/notes` retrieves every note belonging to a given user, used to populate a list or sidebar view.
+
+```
+GET https://api.awesome-notes.com/v1.0/note/:noteId
+GET https://api.awesome-notes.com/v1.0/users/:userId/notes
+```
+
+## 3. Backwards Compatibility
+
+Public APIs have a constraint that internal services don't: once a contract is published, developers build software that depends on it. Breaking that contract, even for a good reason, breaks their software.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant Dev as Developer's App
+      participant API as API v1.0
+
+      Dev->>API: POST /v1.0/note — body: { userId, content }
+      API-->>Dev: 201 Created — note object returned
+
+      note over Dev,API: API adds new optional field: tags
+
+      Dev->>API: POST /v1.0/note — body: { userId, content }
+      API-->>Dev: 201 Created ✓ still works — tags defaults to []`}
+    caption="Adding an optional field is backwards-compatible. Existing callers who don't send it continue to work without any code change."
+  />
+</div>
+
+**Optional parameters are backwards-compatible.** If a new field carries a sensible default (or is simply ignored when absent), any existing caller who doesn't send it will continue to receive valid responses. No code change required on their side.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant Dev as Developer's App
+      participant API as API v1.0
+
+      Dev->>API: POST /v1.0/note — body: { userId, content }
+      API-->>Dev: 400 Bad Request ✗ — missing required field: sectionId
+
+      note over Dev,API: Adding a required field breaks every existing caller`}
+    caption="Adding a required parameter to an existing endpoint breaks all callers who haven't updated. They can't satisfy the new contract without a code change."
+  />
+</div>
+
+**Required parameters are not backwards-compatible.** Every caller who doesn't send the new field will receive an error and their code breaks until they update it. This is why introducing a required field to an existing endpoint is one of the most disruptive changes an API can make.
+
+The solution to both cases, but especially required fields, is versioning.
+
+<Callout type="warning" title="Never Add Required Fields to an Existing Endpoint">
+  Once an endpoint is public, treat its required parameters as immutable. New required fields belong on a new version of the endpoint, not the existing one. Optional fields with defaults are safe to add in-place.
+</Callout>
+
+## 4. Versioning
+
+When a change is significant enough that it can't be made backwards-compatible (a new required field, a renamed parameter, a restructured response), the right approach is to publish the change under a new version rather than modifying the existing endpoint.
+
+```
+# Original endpoint, still works for existing callers
+POST https://api.awesome-notes.com/v1.0/note
+
+# New version, introduces sectionId as a required field
+POST https://api.awesome-notes.com/v2.0/note
+```
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart TB
+      subgraph "v1.0 — still available"
+        V1["POST /v1.0/note\nRequired: userId, content\n(sectionId does not exist)"]
+      end
+      subgraph "v2.0 — new version"
+        V2["POST /v2.0/note\nRequired: userId, content, sectionId\n(new required field introduced here)"]
+      end
+      OLD["👤 Existing callers\n(no code change needed)"] --> V1
+      NEW["👤 New callers\n(adopt the new contract)"] --> V2`}
+    caption="Versioning lets breaking changes land on a new endpoint. Existing callers stay on v1.0 without modification while new integrations target v2.0."
+  />
+</div>
+
+By maintaining both versions simultaneously, existing integrations continue to function while new callers can opt into the updated contract at their own pace. At some point, the older version is marked **deprecated**, which is a formal signal that it will eventually be removed and that developers should migrate. Deprecation notices are typically accompanied by a sunset date and migration documentation.
+
+Versioning serves another purpose beyond breaking changes: security. When an API key or authentication mechanism is compromised, providers can issue a new version with updated key schemes, deprecating the old ones and prompting all clients to rotate their credentials.
+
+<Callout type="note" title="What Counts as a Breaking Change">
+  Removing a field, renaming a parameter, changing a field's type, and adding a new required parameter are all breaking changes. Adding an optional field, adding a new endpoint, and adding new optional response fields are generally safe and don't require a version bump.
+</Callout>
+
+## 5. Pagination
+
+Retrieving all notes for a user with `GET /v1.0/users/:userId/notes` works fine when a user has a handful of notes. It does not work when they have tens of thousands. Returning the entire dataset in a single response is slow, expensive, and often larger than any client can reasonably process.
+
+The solution is **pagination**, which means returning a fixed-size slice of the dataset and letting the caller request subsequent slices as needed. Two query parameters control this:
+
+- **`limit`** — the maximum number of items to return in a single response. Acts as a cap; the server should also enforce its own maximum to prevent callers from requesting unlimited data.
+- **`offset`** — the number of items to skip before starting the current page. An offset of `0` returns the first page; an offset of `10` (with a limit of `10`) returns the second.
+
+```
+# First page, items 1 through 10
+GET /v1.0/users/:userId/notes?limit=10&offset=0
+
+# Second page, items 11 through 20
+GET /v1.0/users/:userId/notes?limit=10&offset=10
+
+# Third page, items 21 through 30
+GET /v1.0/users/:userId/notes?limit=10&offset=20
+```
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant C as Client
+      participant API as API
+
+      C->>API: GET /notes?limit=10&offset=0
+      API-->>C: notes[0..9] + total: 47
+
+      C->>API: GET /notes?limit=10&offset=10
+      API-->>C: notes[10..19] + total: 47
+
+      C->>API: GET /notes?limit=10&offset=20
+      API-->>C: notes[20..29] + total: 47`}
+    caption="Paginated requests retrieve a fixed-size slice of the dataset. The client advances the offset by the limit value to walk through subsequent pages."
+  />
+</div>
+
+Both `limit` and `offset` should be optional, with sensible defaults (e.g. `limit=20`, `offset=0`). A caller who doesn't specify them should still get a reasonable response, not an error, and not every record in the database.
+
+<Callout type="tip" title="Always Set a Server-Side Maximum for limit">
+  Treating limit as unbounded lets callers request millions of records with a single query. Set a hard ceiling on the server (e.g. <code>limit ≤ 100</code>) and return an error, or silently clamp the value, if a caller exceeds it. Never let user input drive unbounded database queries.
+</Callout>
+
+## 6. Idempotency & Safe Methods
+
+A `GET` request should **never create or modify data**. This isn't just a convention; it has practical implications for caching, proxies, and retry behaviour.
+
+A method is **idempotent** if calling it multiple times with the same inputs produces the same outcome as calling it once. `GET`, `PUT`, and `DELETE` are all idempotent. `POST` is not: calling `POST /note` twice with the same body creates two separate notes.
+
+A method is **safe** if it produces no side effects at all and only reads data. `GET` is the only commonly safe method.
+
+<table>
+  <thead>
+    <tr>
+      <th>Verb</th>
+      <th>Safe?</th>
+      <th>Idempotent?</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>GET</code></td>
+      <td>✅ Yes</td>
+      <td>✅ Yes</td>
+    </tr>
+    <tr>
+      <td><code>POST</code></td>
+      <td>❌ No</td>
+      <td>❌ No</td>
+    </tr>
+    <tr>
+      <td><code>PUT</code></td>
+      <td>❌ No</td>
+      <td>✅ Yes</td>
+    </tr>
+    <tr>
+      <td><code>PATCH</code></td>
+      <td>❌ No</td>
+      <td>✅ Yes</td>
+    </tr>
+    <tr>
+      <td><code>DELETE</code></td>
+      <td>❌ No</td>
+      <td>✅ Yes</td>
+    </tr>
+  </tbody>
+</table>
+
+This matters for **caching**: because `GET` is safe and idempotent, browsers, CDNs, and reverse proxies can cache its responses freely. A `GET /note/42` that returns the same note every time can be served from cache without hitting the origin server. If a `GET` endpoint secretly mutates data, that caching assumption breaks, and the mutation may never be executed at all on a cache hit.
+
+<Callout type="important" title="Never Modify Data in a GET Request">
+  Using a GET endpoint to trigger a state change (logging a view count inline, marking a record as read, or generating a resource) is one of the most common API design mistakes. It breaks caching, violates the HTTP contract, and creates non-obvious side effects. Mutations belong in POST, PUT, PATCH, or DELETE.
+</Callout>
+
+## 7. Rate Limiting
+
+Rate limiting caps the number of requests a caller can make to an endpoint within a given time window, sometimes called an **epoch**. It prevents any single client from overwhelming the server and ensures fair access across all users of a shared API.
+
+Each epoch defines a rolling or fixed period (commonly one minute, one hour, or one day) and a maximum call count that resets when the epoch expires. A typical rate limit might allow 100 requests per minute per API key. If a caller exhausts their quota before the epoch resets, the server returns a `429 Too Many Requests` response, often with a `Retry-After` header indicating when the next epoch begins and requests can resume.
+
+Rate limits are usually documented per-endpoint. A search endpoint that triggers heavy database queries may have a much stricter limit than a lightweight `GET` on a cached resource. Public API documentation (Stripe and Reddit are good examples) always lists rate limits clearly alongside each endpoint.
+
+## 8. Request & Response Examples
+
+The following examples use the notes API designed throughout this chapter. Each shows the HTTP verb, the full endpoint URL, and either the request body or the response shape.
+
+### Create a note
+
+```
+POST https://api.awesome-notes.com/v1.0/note
+Content-Type: application/json
+```
+
+**Request body:**
+
+```json
+{
+  "userId": "usr_8f3kd92",
+  "title": "Meeting notes Q3 planning",
+  "content": "Discussed roadmap priorities for Q3...",
+  "tags": ["work", "planning"],
+  "sectionId": "sec_4j2lp01"
+}
+```
+
+`tags` and `sectionId` are optional. A minimal valid request body is just `userId`, `title`, and `content`.
+
+**Response (201 Created):**
+
+```json
+{
+  "noteId": "note_7x9qm44",
+  "userId": "usr_8f3kd92",
+  "title": "Meeting notes Q3 planning",
+  "content": "Discussed roadmap priorities for Q3...",
+  "tags": ["work", "planning"],
+  "sectionId": "sec_4j2lp01",
+  "createdAt": "2024-09-14T10:32:00Z",
+  "updatedAt": "2024-09-14T10:32:00Z"
+}
+```
+
+The server assigns `noteId`, `createdAt`, and `updatedAt`. The full note object is returned so the caller doesn't need a follow-up `GET` to discover the generated ID.
+
+**Response (400 Bad Request)** (missing required field):
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Request body is missing required fields.",
+    "details": [
+      {
+        "field": "title",
+        "issue": "Field is required and cannot be empty."
+      }
+    ]
+  }
+}
+```
+
+A `400` is returned whenever the caller sends a malformed or incomplete request: wrong types, missing required fields, or values outside an allowed range. The error body should always identify *which* field failed and *why*, so the developer can fix it without guesswork. A bare status code with no body is not enough.
+
+### Get a single note
+
+```
+GET https://api.awesome-notes.com/v1.0/note/note_7x9qm44
+```
+
+No request body; the note ID is a path parameter. Returns `200 OK` with the same note object shape shown above, or `404 Not Found` if no note exists at that ID.
+
+### Get all notes for a user (paginated)
+
+```
+GET https://api.awesome-notes.com/v1.0/users/usr_8f3kd92/notes?limit=10&offset=0
+```
+
+`limit` and `offset` are optional query parameters. Defaults apply if omitted.
+
+**Response (200 OK):**
+
+```json
+{
+  "notes": [
+    {
+      "noteId": "note_7x9qm44",
+      "title": "Meeting notes Q3 planning",
+      "updatedAt": "2024-09-14T10:32:00Z"
+    }
+  ],
+  "total": 47,
+  "limit": 10,
+  "offset": 0
+}
+```
+
+The response echoes `limit` and `offset` back to the caller and includes a `total` count, giving the client everything it needs to calculate how many pages remain and whether to request more.
+
+<Callout type="note" title="List Responses Don't Always Return Full Objects">
+  The paginated list response above returns a summary shape for each note (just the ID, title, and timestamp) rather than the full note with its entire content body. This keeps list responses fast and small. Full content is fetched separately when the user actually opens a note.
+</Callout>
+
+## 9. Real-World API Documentation
+
+The best way to develop an instinct for good API design is to read APIs that are widely considered exemplary. Two in particular are worth studying closely:
+
+**[Stripe](https://stripe.com/docs/api)**
+Stripe's API reference is the gold standard for developer documentation. Every endpoint lists its required and optional parameters with types and descriptions, shows exactly what the response object looks like, and includes working code examples in multiple languages. Error codes are documented with their own dedicated page, listing every possible `code` string and what it means. Versioning is surfaced prominently: the API version is sent as a header, not embedded in the URL, and the changelog is public.
+
+**[Reddit](https://www.reddit.com/dev/api)**
+Reddit's API documentation is a useful counterpoint: it covers a large, real-world surface area across many resource types (posts, comments, subreddits, users) and shows how pagination is handled in practice through `before` and `after` cursor parameters rather than numeric offsets. Rate limiting rules and OAuth scope requirements are listed per-endpoint.
+
+Reading these alongside this chapter is useful not just for seeing correct usage of the concepts above, but for noticing the design decisions that make an API pleasant or painful to work with as a consumer.
+
+## Summary
+
+<table>
+  <thead>
+    <tr>
+      <th>Concept</th>
+      <th>Key Takeaway</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>API design</strong></td>
+      <td>Concerns only the surface area (parameters, responses, and the contract), not implementation</td>
+    </tr>
+    <tr>
+      <td><strong>CRUD</strong></td>
+      <td>Create, Read, Update, Delete: the four fundamental operations on any entity</td>
+    </tr>
+    <tr>
+      <td><strong>Entities</strong></td>
+      <td>The nouns of a system (Note, User) that API operations act upon</td>
+    </tr>
+    <tr>
+      <td><strong>Backwards compatibility</strong></td>
+      <td>Optional fields are safe to add; required fields on existing endpoints break all existing callers</td>
+    </tr>
+    <tr>
+      <td><strong>Versioning</strong></td>
+      <td>Breaking changes belong on a new version (<code>v2.0</code>), not the existing endpoint</td>
+    </tr>
+    <tr>
+      <td><strong>Deprecation</strong></td>
+      <td>A formal signal that a version will be removed; prompts callers to migrate</td>
+    </tr>
+    <tr>
+      <td><strong>Pagination</strong></td>
+      <td><code>limit</code> and <code>offset</code> query parameters slice large datasets into manageable pages</td>
+    </tr>
+    <tr>
+      <td><strong>Idempotency</strong></td>
+      <td>The same inputs always produce the same outcome. <code>GET</code>, <code>PUT</code>, and <code>DELETE</code> are idempotent; <code>POST</code> is not</td>
+    </tr>
+    <tr>
+      <td><strong>Safe methods</strong></td>
+      <td><code>GET</code> has no side effects and must never modify data, as caching depends on this guarantee</td>
+    </tr>
+    <tr>
+      <td><strong>Rate limiting</strong></td>
+      <td>Caps the maximum number of calls per epoch (time window) per caller; exceeding it returns <code>429 Too Many Requests</code></td>
+    </tr>
+  </tbody>
+</table>
