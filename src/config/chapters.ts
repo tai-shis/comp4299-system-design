@@ -59,15 +59,15 @@ export const chapters: Chapter[] = [
         title: 'Networking Basics',
         href: '/docs/networking/basics',
         description: 'Networking basics, TCP, UDP, HTTP, and DNS',
-        tags: ['networking', 'sockets', 'http', 'network layers']
+        tags: ['networking', 'sockets', 'http', 'network layers'],
       },
       {
         title: 'Web Sockets in Action',
         href: '/docs/networking/ws-demonstration',
         description: 'Web socket bi-directional communication video demonstration.',
         tags: ['web sockets', 'example', 'stock ticker'],
-        wip: true
-      }
+        wip: true,
+      },
     ],
   },
   {
@@ -94,7 +94,7 @@ export const chapters: Chapter[] = [
         description: 'Statelessness, cold starts, provider differences, and when to use serverless.',
         tags: ['serverless', 'vercel', 'aws-lambda', 'cold-starts'],
       },
-    ]
+    ],
   },
   {
     id: 'proxies',
@@ -117,8 +117,22 @@ export const chapters: Chapter[] = [
     ],
   },
   {
-    id: 'storage',
+    id: 'caching',
     number: 5,
+    title: 'Caching',
+    description: 'Caching types, use cases, when and where to implement',
+    pages: [
+      {
+        title: 'Caching Basics',
+        href: '/docs/caching',
+        description: 'Caching types, use cases, when and where to implement',
+        tags: ['CDN', 'external-cache', 'internal-cache', 'Redis'],
+      },
+    ],
+  },
+  {
+    id: 'storage',
+    number: 6,
     title: 'Storage',
     description: 'Relational databases, ACID properties, and how data is stored and queried at scale.',
     pages: [
