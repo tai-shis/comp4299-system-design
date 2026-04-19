@@ -89,6 +89,20 @@ export const chapters: Chapter[] = [
       },
     ]
   },
+  {
+    id: 'proxies',
+    number: 4,
+    title: 'Proxies',
+    description: 'Forward proxies, reverse proxies, load balancers, and how they fit into scalable system design.',
+    pages: [
+      {
+        title: 'Proxies and Load Balancing',
+        href: '/proxies',
+        description: 'Forward vs. reverse proxies, load balancing algorithms, and layer 4 vs. layer 7.',
+        tags: ['proxy', 'load-balancing', 'reverse-proxy'],
+      },
+    ],
+  },
   // ─── Add future chapters below ────────────────────────────────────────────
   // {
   //   id: 'databases',

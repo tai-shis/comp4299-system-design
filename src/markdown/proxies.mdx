@@ -1,0 +1,356 @@
+import MermaidDiagram from '@/components/MermaidDiagram';
+import Callout from '@/components/Callout';
+
+# Proxies and Load Balancers
+
+These notes cover proxies and load balancers: what they are, how they differ, and why they matter for system design. As a developer, you are unlikely to implement any of these yourself — the goal is to understand the concepts well enough to reason about architecture and communicate clearly in system design contexts.
+
+The good news is that we already know more about these than we might think. A CDN, a VPN, a load balancer — these are all proxies operating at different layers.
+
+## Contents
+
+1. [Proxies](#1-proxies)
+2. [Forward Proxy](#2-forward-proxy)
+3. [Reverse Proxy](#3-reverse-proxy)
+4. [Load Balancers](#4-load-balancers)
+5. [Load Balancing Algorithms](#5-load-balancing-algorithms)
+6. [Layer 4 vs. Layer 7 Load Balancers](#6-layer-4-vs-layer-7-load-balancers)
+7. [Load Balancer Availability](#7-load-balancer-availability)
+8. [In Practice](#8-in-practice)
+9. [Summary](#summary)
+
+## 1. Proxies
+
+A **proxy** is a server that sits between a client and a destination server, intercepting and forwarding traffic on behalf of one side or the other. There are two types, and the distinction comes down to which side the proxy is acting for.
+
+- **Forward proxy** — acts on behalf of the client. The destination server sees the proxy, not the client.
+- **Reverse proxy** — acts on behalf of the server. The client sees the proxy, not the destination servers behind it.
+
+The rest of this chapter unpacks what that means in practice.
+
+## 2. Forward Proxy
+
+A forward proxy is what most people mean when they say "proxy." It is a middle server that sits between the client and the destination, forwarding the client's requests outward.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      C["👤 Client"] -->|"Request (client IP hidden)"| FP["🔀 Forward Proxy"]
+      FP -->|"Request (proxy IP shown)"| D["🌐 Destination Server"]
+      D -->|"Response"| FP
+      FP -->|"Response"| C`}
+    caption="A forward proxy intercepts outbound requests from the client. The destination server sees the proxy's IP address, not the client's."
+  />
+</div>
+
+The key property is that the forward proxy hides the client from the destination server. The destination sees the proxy's IP address, not the originating client's. This has a few practical uses:
+
+- **Anonymity and identity protection.** The client's real IP address is not exposed to the destination.
+- **Bypassing restrictions.** Because the proxy appears as the origin of traffic, clients can use proxies located in different regions to bypass geo-blocking or route around network-level firewalls.
+- **Content filtering.** The proxy can inspect and block outbound requests based on rules. Corporate networks and parental controls commonly use forward proxies to prevent access to certain content before the request ever reaches the destination.
+- **Centralised traffic visibility.** All outbound traffic from a network flows through the proxy, which means it can be logged and audited centrally.
+
+A **VPN (Virtual Private Network)** is a familiar example of a forward proxy. When you connect to a VPN, your traffic is routed through a server in another location. The destination sees that server's IP, not yours — which is how VPNs let you appear to be browsing from a different country.
+
+<Callout type="note" title="VPNs and Forward Proxies Are Not Identical">
+  A VPN and a forward proxy are similar in effect but different in implementation. A VPN encrypts all traffic at the network level and routes it through a tunnel. A forward proxy typically operates at the application layer and may not encrypt traffic by default. Both hide your IP from the destination; how they do it differs.
+</Callout>
+
+## 3. Reverse Proxy
+
+A reverse proxy sits in front of one or more backend servers, accepting requests from clients and forwarding them inward. Where a forward proxy hides the client, a reverse proxy hides the servers.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      C["👤 Client"] -->|"Request"| RP["🔀 Reverse Proxy"]
+      RP -->|"Forward"| S1["🖥️ Backend Server A"]
+      RP -->|"Forward"| S2["🖥️ Backend Server B"]
+      RP -->|"Forward"| S3["🖥️ Backend Server C"]
+      S1 & S2 & S3 -->|"Response"| RP
+      RP -->|"Response"| C`}
+    caption="A reverse proxy sits in front of backend servers. The client is unaware of how many servers exist or which one handled its request."
+  />
+</div>
+
+The client has no visibility into what is behind the reverse proxy. It makes a request to a single address and receives a response. Whether that response came from one server or one of fifty is invisible to it. This abstraction makes interacting with complex backend infrastructure feel like talking to a single server.
+
+Reverse proxies serve several purposes beyond just forwarding traffic:
+
+- **Load distribution.** Traffic is spread across multiple backend servers to prevent any one from being overwhelmed.
+- **SSL termination.** The reverse proxy handles HTTPS encryption and decryption, so backend servers can communicate over plain HTTP internally.
+- **Caching.** Responses can be cached at the proxy layer so that repeated requests for the same content do not need to reach backend servers at all.
+- **Security.** Backend server addresses and internal network structure are hidden from clients.
+
+Two common examples of reverse proxies that are likely already familiar:
+
+A **CDN (Content Delivery Network)** is a reverse proxy that caches and serves static assets from servers geographically close to the requesting client, reducing latency. The client never talks directly to the origin server for cached content.
+
+A **load balancer** is also a reverse proxy, and is important enough for system design that it gets its own section.
+
+## 4. Load Balancers
+
+A load balancer is a reverse proxy whose primary job is distributing incoming traffic across a pool of backend servers. All of those backend servers run the same code and can handle the same types of requests — the load balancer simply decides which one handles any given request.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      C["👤 Client"] --> LB["⚖️ Load Balancer"]
+      LB --> S1["🖥️ Server 1"]
+      LB --> S2["🖥️ Server 2"]
+      LB --> S3["🖥️ Server 3"]
+      S1 & S2 & S3 --> DB[("🗄️ Database")]`}
+    caption="A load balancer distributes incoming requests across a pool of backend servers. Each server runs the same application code and shares access to the same database."
+  />
+</div>
+
+The benefits of distributing traffic this way are:
+
+- **Performance.** A single server has a ceiling on how many concurrent requests it can handle. Spreading traffic across multiple servers raises that ceiling significantly.
+- **Reliability.** If one server crashes or becomes unresponsive, the load balancer routes traffic to the remaining healthy servers. The client sees no interruption.
+- **Scalability.** Adding capacity is as simple as adding more servers to the pool and registering them with the load balancer.
+
+Load balancers also perform **health checks**: periodic pings to each backend server to confirm it is alive and able to handle requests. A server that fails health checks is temporarily removed from the pool until it recovers.
+
+<Callout type="tip" title="Statelessness Makes Load Balancing Possible">
+  Load balancing depends on every backend server being interchangeable. If a server stores session state in memory, then subsequent requests from the same client must always land on the same server — which defeats the purpose of having multiple servers. This is why stateless design (covered in the REST and serverless chapters) is not just a good practice but a prerequisite for horizontal scaling.
+</Callout>
+
+## 5. Load Balancing Algorithms
+
+The load balancer needs a strategy to decide which server handles each request. Several common algorithms exist, each with different trade-offs.
+
+### Round robin
+
+The simplest approach. Requests are distributed across servers in a fixed cycle: server 1, server 2, server 3, server 1, server 2, server 3, and so on.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant LB as Load Balancer
+      participant S1 as Server 1
+      participant S2 as Server 2
+      participant S3 as Server 3
+
+      LB->>S1: Request 1
+      LB->>S2: Request 2
+      LB->>S3: Request 3
+      LB->>S1: Request 4
+      LB->>S2: Request 5
+      LB->>S3: Request 6`}
+    caption="Round robin cycles through servers in order, distributing requests evenly regardless of each server's current load."
+  />
+</div>
+
+The problem with plain round robin is that it treats all servers as equal. If one server has less memory or a slower CPU than the others, it will still receive the same number of requests — and may start falling behind.
+
+**Weighted round robin** addresses this by assigning each server a weight proportional to its capacity. A server with weight 3 receives three times as many requests as a server with weight 1. This allows heterogeneous pools (servers with different specs) to be balanced more fairly.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant LB as Load Balancer
+      participant S1 as Server 1 (weight 3)
+      participant S2 as Server 2 (weight 1)
+
+      LB->>S1: Request 1
+      LB->>S1: Request 2
+      LB->>S1: Request 3
+      LB->>S2: Request 4
+      LB->>S1: Request 5
+      LB->>S1: Request 6
+      LB->>S1: Request 7
+      LB->>S2: Request 8`}
+    caption="Weighted round robin sends proportionally more traffic to higher-capacity servers. Server 1 receives 3x as many requests as Server 2."
+  />
+</div>
+
+### Least connections
+
+Instead of cycling mechanically, the load balancer routes each incoming request to whichever server currently has the fewest active connections.
+
+This adapts naturally to situations where requests take different amounts of time to process. If one server is handling several long-running requests while another has finished all of its work, the next request goes to the idle server. Round robin would not account for this — least connections does.
+
+### Location-based
+
+Routes requests to the backend server geographically closest to the client. This is particularly relevant for global applications where network latency between continents is noticeable. A client in Europe is directed to a European server; a client in Asia to an Asian one.
+
+CDNs use a form of this: they serve cached content from the edge node nearest the client, rather than always hitting a central origin server.
+
+### IP hash
+
+A hash of the client's IP address determines which server handles the request. Because the same IP always produces the same hash, the same client is consistently routed to the same server.
+
+This is useful in cases where some server-side affinity is needed — for example, if a server maintains a local cache that is warm for a particular client's data. It is not truly stateless, but it is a pragmatic middle ground in some architectures.
+
+## 6. Layer 4 vs. Layer 7 Load Balancers
+
+Load balancers operate at different layers of the network stack, and the layer they use determines how much they can see about the traffic they are handling.
+
+### Layer 4 (transport layer)
+
+A layer 4 load balancer operates at the TCP/UDP level. It sees the source and destination IP addresses and ports, and nothing more. It cannot inspect the content of the request.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      C["👤 Client"] -->|"TCP packet\n(src IP visible)"| LB["⚖️ L4 Load Balancer\nlooks at: IP + port only"]
+      LB -->|"Forward packet\n(rewrites dest IP)"| S1["🖥️ Server 1"]
+      LB -->|"Forward packet\n(rewrites dest IP)"| S2["🖥️ Server 2"]`}
+    caption="A layer 4 load balancer routes based on IP address and port alone. It does not inspect request content and simply rewrites the destination IP before forwarding."
+  />
+</div>
+
+Because it only needs to look at IP and port information, a layer 4 load balancer is fast and efficient. The trade-off is that it has no awareness of what the request is actually asking for. It cannot route `/api/users` to one server and `/api/notes` to another — it has no idea which path was requested.
+
+### Layer 7 (application layer)
+
+A layer 7 load balancer operates at the HTTP level. It can read the full request: the URL path, headers, cookies, and body.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      C["👤 Client"] -->|"HTTP Request"| LB["⚖️ L7 Load Balancer\nlooks at: path, headers, body"]
+      LB -->|"/api/notes/*"| S1["🖥️ Notes Service"]
+      LB -->|"/api/users/*"| S2["🖥️ User Service"]
+      LB -->|"/api/auth/*"| S3["🖥️ Auth Service"]`}
+    caption="A layer 7 load balancer can route based on request content. Different paths can be directed to different backend services, enabling service-level traffic splitting."
+  />
+</div>
+
+This content-awareness enables much more sophisticated routing. Requests for `/api/notes` can go to the notes service, requests for `/api/auth` to the auth service, and so on. This is how most modern API gateways and reverse proxies work.
+
+The cost is complexity and overhead. A layer 7 load balancer must decrypt HTTPS traffic, parse the HTTP request, make a routing decision, and establish a new connection to the backend server — rather than simply rewriting an IP address and forwarding a packet. This makes it slower than a layer 4 load balancer, though in practice the difference is rarely the bottleneck in a well-designed system.
+
+<table>
+  <thead>
+    <tr>
+      <th>Dimension</th>
+      <th>Layer 4</th>
+      <th>Layer 7</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Operates at</strong></td>
+      <td>Transport layer (TCP/UDP)</td>
+      <td>Application layer (HTTP/HTTPS)</td>
+    </tr>
+    <tr>
+      <td><strong>Sees</strong></td>
+      <td>IP address and port only</td>
+      <td>Full request: path, headers, body</td>
+    </tr>
+    <tr>
+      <td><strong>Routing basis</strong></td>
+      <td>IP and port</td>
+      <td>URL path, headers, content</td>
+    </tr>
+    <tr>
+      <td><strong>Speed</strong></td>
+      <td>Faster; minimal inspection</td>
+      <td>Slower; full request parsing</td>
+    </tr>
+    <tr>
+      <td><strong>Flexibility</strong></td>
+      <td>Low; cannot route by content</td>
+      <td>High; full content-aware routing</td>
+    </tr>
+    <tr>
+      <td><strong>SSL termination</strong></td>
+      <td>No</td>
+      <td>Yes</td>
+    </tr>
+  </tbody>
+</table>
+
+## 7. Load Balancer Availability
+
+A load balancer improves the availability of the servers behind it. But what happens if the load balancer itself goes down? It becomes the single point of failure for the entire system.
+
+The straightforward solution is to run multiple load balancers in parallel. If one fails, traffic continues to flow through the others.
+
+There are two common approaches to distributing traffic across multiple load balancers:
+
+**DNS round robin.** The domain name resolves to multiple IP addresses, each belonging to a different load balancer. DNS clients cycle through them. This is simple to set up but has a known limitation: DNS responses are cached, so if a load balancer goes down, some clients may continue sending traffic to its IP until the cache expires.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      DNS["🌐 DNS\nexample.com"] -->|"IP 1"| LB1["⚖️ Load Balancer 1"]
+      DNS -->|"IP 2"| LB2["⚖️ Load Balancer 2"]
+      LB1 & LB2 --> S1["🖥️ Server 1"]
+      LB1 & LB2 --> S2["🖥️ Server 2"]
+      LB1 & LB2 --> S3["🖥️ Server 3"]`}
+    caption="DNS round robin resolves the domain to multiple load balancer IPs. Clients are distributed across load balancers at the DNS level."
+  />
+</div>
+
+**Shared virtual IP.** Multiple load balancers share a single virtual IP address. Only one is active at a time; if it fails, another takes over and claims the same IP. Clients see no change in address, so there is no DNS caching problem. This approach is harder to implement and typically requires specialised networking configuration.
+
+<Callout type="note" title="Load Balancers Rarely Fail in Practice">
+  In production systems, load balancers are purpose-built for high throughput and are rarely the component that fails. Most cloud-managed load balancers (AWS ALB, Google Cloud Load Balancing) handle their own redundancy internally and are effectively treated as a reliable primitive. The single-point-of-failure concern is most relevant when running your own load balancer infrastructure.
+</Callout>
+
+## 8. In Practice
+
+Implementing a load balancer from scratch is something almost no development team does. The complexity involved in correctly handling health checks, session persistence, SSL termination, and failover is significant. The common choices are:
+
+- **Nginx** — a widely used open-source web server that can also function as a reverse proxy and load balancer. Highly configurable, runs on your own infrastructure.
+- **HAProxy** — a dedicated open-source load balancer, known for performance and reliability in high-traffic environments.
+- **Cloud-managed options** — AWS Elastic Load Balancing, Google Cloud Load Balancing, and Azure Load Balancer all offer managed load balancers that handle redundancy, health checks, and scaling without operational overhead. For most production systems, these are the default choice.
+
+The right approach for most projects is to pick a cloud-managed load balancer and treat it as a reliable building block, rather than trying to manage the infrastructure yourself.
+
+## Summary
+
+<table>
+  <thead>
+    <tr>
+      <th>Concept</th>
+      <th>Key Takeaway</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Forward proxy</strong></td>
+      <td>Sits between client and destination; hides the client. Used for anonymity, geo-bypassing, and content filtering. VPNs are a common example.</td>
+    </tr>
+    <tr>
+      <td><strong>Reverse proxy</strong></td>
+      <td>Sits in front of backend servers; hides the servers. The client sees one address regardless of how many servers exist behind it.</td>
+    </tr>
+    <tr>
+      <td><strong>CDN</strong></td>
+      <td>A reverse proxy that caches and serves content from servers geographically close to the client.</td>
+    </tr>
+    <tr>
+      <td><strong>Load balancer</strong></td>
+      <td>A reverse proxy that distributes traffic across multiple backend servers to improve performance, reliability, and scalability.</td>
+    </tr>
+    <tr>
+      <td><strong>Round robin</strong></td>
+      <td>Cycles through servers in order. Weighted variant accounts for differing server capacities.</td>
+    </tr>
+    <tr>
+      <td><strong>Least connections</strong></td>
+      <td>Routes to whichever server currently has the fewest active connections; adapts to variable request duration.</td>
+    </tr>
+    <tr>
+      <td><strong>IP hash</strong></td>
+      <td>Consistently routes the same client IP to the same server; useful when server-side affinity is needed.</td>
+    </tr>
+    <tr>
+      <td><strong>Layer 4</strong></td>
+      <td>Routes by IP and port only; fast but cannot inspect request content.</td>
+    </tr>
+    <tr>
+      <td><strong>Layer 7</strong></td>
+      <td>Routes by full HTTP request content; flexible and content-aware but carries more overhead.</td>
+    </tr>
+    <tr>
+      <td><strong>Single point of failure</strong></td>
+      <td>A single load balancer is itself a failure risk; mitigated with multiple load balancers via DNS round robin or a shared virtual IP.</td>
+    </tr>
+  </tbody>
+</table>
