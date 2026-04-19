@@ -80,7 +80,13 @@ export const chapters: Chapter[] = [
         href: '/docs/apis/design-principles',
         description: 'CRUD, backwards compatibility, versioning, pagination, idempotency, and rate limiting.',
         tags: ['crud', 'versioning', 'pagination', 'idempotency', 'rate-limiting'],
-      }
+      },
+      {
+        title: 'Serverless Functions',
+        href: '/docs/apis/serverless-functions',
+        description: 'Statelessness, cold starts, provider differences, and when to use serverless.',
+        tags: ['serverless', 'vercel', 'aws-lambda', 'cold-starts'],
+      },
     ]
   },
   // ─── Add future chapters below ────────────────────────────────────────────
