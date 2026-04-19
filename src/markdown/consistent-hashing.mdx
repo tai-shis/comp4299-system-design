@@ -1,0 +1,210 @@
+import MermaidDiagram from '@/components/MermaidDiagram';
+import Callout from '@/components/Callout';
+
+# Consistent Hashing
+
+These notes cover consistent hashing: what problem it solves, how it works at a high level, and when it is worth the added complexity.
+
+## Contents
+
+1. [Hashing for Load Distribution](#1-hashing-for-load-distribution)
+2. [The Problem with Simple Hashing](#2-the-problem-with-simple-hashing)
+3. [The Consistent Hashing Approach](#3-the-consistent-hashing-approach)
+4. [Adding and Removing Nodes](#4-adding-and-removing-nodes)
+5. [When to Use Consistent Hashing](#5-when-to-use-consistent-hashing)
+6. [Key Components](#6-key-components)
+7. [Summary](#summary)
+
+## 1. Hashing for Load Distribution
+
+The simplest way to use hashing for load balancing is to take some property of the client (their IP address is a common choice), run it through a hash function, and use the result to pick a server.
+
+In its most basic form, this looks like taking the hash value and computing `hash mod number_of_servers`. The result is a server index.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      subgraph "Client IPs"
+        I1["IP → hash: 6"]
+        I2["IP → hash: 7"]
+        I3["IP → hash: 8"]
+        I4["IP → hash: 9"]
+      end
+      subgraph "hash mod 3"
+        I1 -->|"6 mod 3 = 0"| S0["🖥️ Server 0"]
+        I2 -->|"7 mod 3 = 1"| S1["🖥️ Server 1"]
+        I3 -->|"8 mod 3 = 2"| S2["🖥️ Server 2"]
+        I4 -->|"9 mod 3 = 0"| S0
+      end`}
+    caption="A simple hash-based approach: hash the client IP and mod by the number of servers to determine which server handles the request."
+  />
+</div>
+
+For a purely stateless system, this works fine but offers no advantage over round robin. The value of hashing comes when the servers are *not* fully stateless: specifically, when each server maintains a cache of data for the users routed to it.
+
+If a user is always routed to the same server, that server can build up a warm cache specific to that user. Subsequent requests for the same user hit the cache rather than re-fetching from the database. With round robin, the user might land on a different server each time, and the cache would need to be rebuilt on every visit.
+
+<Callout type="note" title="These Servers Are Not Stateless">
+  Servers using IP-based hashing to serve a per-user cache are, by definition, stateful: they hold data in memory that only makes sense for users routed to them. This is a deliberate trade-off. The statelessness constraint from the REST chapter is relaxed here in exchange for a cache performance benefit. That trade-off needs to be made consciously.
+</Callout>
+
+## 2. The Problem with Simple Hashing
+
+Simple modular hashing breaks down as soon as the number of servers changes.
+
+Suppose we have three servers and a server goes down, leaving two. The hash function is now `hash mod 2` instead of `hash mod 3`. Every single hash result maps to a different server index than before. Users that were on server 0 might now be on server 1. Users that were on server 2 are now split across 0 and 1 in a completely different pattern.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      subgraph "Before (3 servers)"
+        B1["hash: 6 → 6 mod 3 = Server 0"]
+        B2["hash: 7 → 7 mod 3 = Server 1"]
+        B3["hash: 8 → 8 mod 3 = Server 2"]
+        B4["hash: 9 → 9 mod 3 = Server 0"]
+      end
+      subgraph "After server 2 removed (2 servers)"
+        A1["hash: 6 → 6 mod 2 = Server 0 ✓"]
+        A2["hash: 7 → 7 mod 2 = Server 1 ✓"]
+        A3["hash: 8 → 8 mod 2 = Server 0 ✗ moved"]
+        A4["hash: 9 → 9 mod 2 = Server 1 ✗ moved"]
+      end`}
+    caption="Removing one server changes the modulus, which remaps most users to different servers. Cached data built up on the old assignment is now unreachable."
+  />
+</div>
+
+The ideal outcome when removing a server would be: users previously assigned to the removed server get redistributed, and everyone else stays where they were. Simple modular hashing cannot deliver this; it remaps nearly everyone. The cached data each server built up for its users is now largely useless, and the system has to re-cache from scratch for the majority of clients.
+
+This is the problem consistent hashing solves.
+
+## 3. The Consistent Hashing Approach
+
+Consistent hashing maps both servers and clients onto a shared circular space, sometimes called a **hash ring**. The hash function produces a position on this ring, and the rule for assigning a client to a server is: find the first server encountered going clockwise around the ring from the client's position.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      subgraph "Hash Ring (simplified as linear)"
+        direction LR
+        P0["position 0"] --> P1["position 1"] --> P2["position 2"] --> P3["···"] --> PN["position N wraps to 0"]
+      end
+      S0["Server 0 at position 10"]
+      S1["Server 1 at position 40"]
+      S2["Server 2 at position 70"]
+      U1["User A maps to position 5 - first server clockwise: Server 0"]
+      U2["User B maps to position 25 - first server clockwise: Server 1"]
+      U3["User C maps to position 55 - first server clockwise: Server 2"]`}
+    caption="Clients and servers are mapped onto a circular hash space. Each client is assigned to the first server encountered clockwise from their position on the ring."
+  />
+</div>
+
+With this structure in place, consider what happens when a server is removed. Only the clients that were assigned to that server need to be reassigned; they move to the next server clockwise. Every other client's assignment is unchanged, because their clockwise lookup still finds the same server it always did.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant U as Affected Users
+      participant S2 as Server 2 (removed)
+      participant S0 as Server 0 (next clockwise)
+      participant OtherUsers as All Other Users
+
+      note over S2: Server 2 goes down
+      U->>S2: Request (server gone)
+      S2-->>U: No response
+      U->>S0: Rerouted to next server clockwise
+      S0-->>U: Response (re-caches for these users)
+      note over OtherUsers: Unaffected, their server assignments unchanged`}
+    caption="When a server is removed, only the users assigned to it are rerouted to the next server clockwise. All other user-to-server mappings remain the same."
+  />
+</div>
+
+This is the key property: removing or adding a node only affects a small fraction of the total key space, rather than reshuffling everything.
+
+## 4. Adding and Removing Nodes
+
+**Removing a node** causes its assigned users to move to the next server clockwise. That server absorbs additional load, which may be significant depending on how many users were assigned to the removed node. Techniques like adding more points per server on the ring (virtual nodes) help distribute this impact more evenly.
+
+**Adding a node** inserts a new position on the ring. Users whose clockwise lookup now lands on the new server are reassigned to it from whichever server previously served them. This is generally less disruptive than removal: the new server takes on some of the load, but no cached data is lost from the servers that remain. The overall effect is to reduce load across the pool and typically improve response times.
+
+<Callout type="tip" title="Virtual Nodes Even Out Distribution">
+  In practice, a single position per server on the ring can lead to uneven distribution, particularly with small numbers of servers. Most consistent hashing implementations assign each server multiple positions on the ring (virtual nodes). The server still physically handles all requests mapped to any of its virtual positions, but the load spreads more evenly and the impact of adding or removing a server is diluted across more of the ring.
+</Callout>
+
+## 5. When to Use Consistent Hashing
+
+Consistent hashing is a tool for a specific problem: minimising remapping when the set of nodes changes. It is worth the added complexity only when that problem actually applies.
+
+**Good use cases:**
+
+- **Server-side caching with IP affinity.** When servers hold per-user caches in memory and remapping users to different servers would invalidate those caches, consistent hashing keeps disruption minimal.
+- **CDNs.** Requests for a given piece of content are consistently routed to the same edge node, maximising cache hit rates.
+- **Distributed databases.** Each database node is responsible for a range of keys on the ring. Adding or removing nodes only moves a portion of the key space rather than requiring a full reshard.
+
+**When it is not needed:**
+
+If your servers are truly stateless and any server can handle any request equally well, round robin is simpler and achieves the same distribution without the complexity. Consistent hashing adds engineering overhead that is only justified when user-to-server affinity actually matters.
+
+<Callout type="note" title="Rendezvous Hashing">
+  Rendezvous hashing (also called highest random weight hashing) is an alternative algorithm that solves the same problem (minimal remapping when nodes change) through a different mechanism. It is not covered here, but worth knowing the name if you encounter it in the wild.
+</Callout>
+
+## 6. Key Components
+
+Any consistent hashing implementation involves three core concepts:
+
+- **Hash key.** The input that determines a client's position on the ring. A client's IP address is the most common choice for load balancing, but it can be any value that should consistently map a client to the same node (a user ID, a session token, a cache key).
+- **Hash function.** The function that converts the hash key into a position on the ring. A simple modulo is not used here; in practice this is a cryptographic or pseudo-random function like SHA-256 that distributes positions uniformly. The function itself does not change when nodes are added or removed.
+- **Nodes.** The servers, CDN edge locations, or database replicas mapped onto the ring. The term "node" is used generically because consistent hashing applies equally to any pool of interchangeable backends, not just web servers.
+
+## Summary
+
+<table>
+  <thead>
+    <tr>
+      <th>Concept</th>
+      <th>Key Takeaway</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Simple hashing</strong></td>
+      <td>Hash the client key and mod by server count. Breaks down when servers are added or removed, remapping nearly all clients.</td>
+    </tr>
+    <tr>
+      <td><strong>Consistent hashing</strong></td>
+      <td>Maps clients and servers onto a shared circular space. Only clients assigned to a changed node are remapped when the pool changes.</td>
+    </tr>
+    <tr>
+      <td><strong>Hash ring</strong></td>
+      <td>The circular space onto which both clients and nodes are mapped. Each client is assigned to the first node clockwise from its position.</td>
+    </tr>
+    <tr>
+      <td><strong>Node removal</strong></td>
+      <td>Affected clients move to the next node clockwise. All other assignments are unchanged.</td>
+    </tr>
+    <tr>
+      <td><strong>Node addition</strong></td>
+      <td>A portion of an existing node's clients move to the new node. Overall load decreases across the pool.</td>
+    </tr>
+    <tr>
+      <td><strong>Virtual nodes</strong></td>
+      <td>Multiple ring positions per physical server. Distributes load more evenly and reduces the impact of individual node changes.</td>
+    </tr>
+    <tr>
+      <td><strong>Hash key</strong></td>
+      <td>The input (IP address, user ID, cache key) that consistently maps a client to the same node.</td>
+    </tr>
+    <tr>
+      <td><strong>Hash function</strong></td>
+      <td>Converts the hash key to a ring position. Typically SHA-256 or similar; does not change when nodes change.</td>
+    </tr>
+    <tr>
+      <td><strong>Good fit</strong></td>
+      <td>Server-side per-user caches, CDN routing, distributed database sharding.</td>
+    </tr>
+    <tr>
+      <td><strong>Not needed</strong></td>
+      <td>Fully stateless servers where any node can handle any request. Round robin is simpler and sufficient.</td>
+    </tr>
+  </tbody>
+</table>
