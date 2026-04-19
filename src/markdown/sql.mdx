@@ -1,0 +1,344 @@
+import MermaidDiagram from '@/components/MermaidDiagram';
+import Callout from '@/components/Callout';
+
+# Relational Databases
+
+These notes cover relational databases (RDBMS): how they store data on disk, how they are structured, and the ACID properties that make them a reliable foundation for most applications. Relational databases are one of the most important tools in system design — understanding them deeply is worth the investment.
+
+## Contents
+
+1. [Storage and the B+ Tree](#1-storage-and-the-b-tree)
+2. [Tables, Schemas, and Rows](#2-tables-schemas-and-rows)
+3. [Foreign Keys and Joins](#3-foreign-keys-and-joins)
+4. [ACID Properties](#4-acid-properties)
+5. [Transactions](#5-transactions)
+6. [Atomicity](#6-atomicity)
+7. [Isolation](#7-isolation)
+8. [Consistency](#8-consistency)
+9. [Summary](#summary)
+
+## 1. Storage and the B+ Tree
+
+Relational databases store data on disk, which means data is **persistent** — it survives restarts, crashes, and power loss. Databases are expected to hold very large amounts of data and to read and write it efficiently.
+
+To make reads and writes fast, relational databases organise data internally using a **B+ tree**. Unlike a binary tree where each node has at most two children, a B+ tree is an M-way tree where each node can have up to M children and holds up to M-1 keys. This makes the tree extremely wide and shallow.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart TD
+      R["30 | 60"]
+      R --> L1["10 | 20"]
+      R --> L2["30 | 50"]
+      R --> L3["60 | 70"]`}
+    caption="A B+ tree with M=3. The root holds m-1 keys and fans out to m leaf nodes. Leaves store the actual data and are linked together in a list for efficient range scans — that linkage is not shown here to keep the layout clean."
+  />
+</div>
+
+The key properties of this structure for databases:
+
+- **Wide, not deep.** Because each node holds many keys, the tree stays very shallow. Finding any record requires traversing very few levels, which means very few disk reads.
+- **Data only in leaves.** Internal nodes hold keys purely to guide the search. All actual data records live in the leaf nodes.
+- **Leaves form a linked list.** Leaf nodes are connected to each other, so range queries (give me all notes created after a certain date) can be answered by scanning along the leaf level without traversing the tree again.
+
+The goal is to minimise the number of disk reads and writes per operation. Reading from disk is orders of magnitude slower than reading from memory, so keeping the tree shallow and wide is what makes database queries fast even over millions of rows.
+
+## 2. Tables, Schemas, and Rows
+
+The surface-level interface of a relational database is the **table**. Each table has a name and a **schema**: a fixed list of columns, each with a name and a data type. Every row of data in the table must conform exactly to that schema.
+
+```sql
+CREATE TABLE notes (
+  id        INT           PRIMARY KEY,
+  user_id   INT           NOT NULL,
+  title     VARCHAR(255)  NOT NULL,
+  content   TEXT          NOT NULL
+);
+```
+
+The instances of this table — its rows, also called records — are real data that satisfy the schema:
+
+<table>
+  <thead>
+    <tr>
+      <th>id</th>
+      <th>user_id</th>
+      <th>title</th>
+      <th>content</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>42</td>
+      <td>Meeting notes</td>
+      <td>Discussed Q3 roadmap...</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>42</td>
+      <td>Shopping list</td>
+      <td>Milk, eggs, bread...</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>99</td>
+      <td>Ideas</td>
+      <td>Side project concepts...</td>
+    </tr>
+  </tbody>
+</table>
+
+Every table needs a way to uniquely identify each row. The `id` column above is a **primary key**: a column (or combination of columns) whose value is unique across every row in the table. In practice, most tables use a single auto-incrementing integer as the primary key rather than trying to compose one from existing data.
+
+Other common constraints that databases enforce at the schema level include **uniqueness** (no two rows may have the same value in a column) and **nullness** (a column may or may not be allowed to hold a null value).
+
+## 3. Foreign Keys and Joins
+
+A database typically has more than one table. Consider a `users` table alongside the `notes` table:
+
+```sql
+CREATE TABLE users (
+  id    INT           PRIMARY KEY,
+  name  VARCHAR(255)  NOT NULL
+);
+```
+
+<table>
+  <thead>
+    <tr>
+      <th>id</th>
+      <th>name</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>42</td><td>Alice</td></tr>
+    <tr><td>99</td><td>Bob</td></tr>
+  </tbody>
+</table>
+
+The `user_id` column in the `notes` table can be declared as a **foreign key** that references the `id` column in `users`:
+
+```sql
+ALTER TABLE notes
+  ADD CONSTRAINT fk_notes_user
+  FOREIGN KEY (user_id) REFERENCES users(id);
+```
+
+A foreign key constraint enforces **referential integrity**: the database will reject any insert or update that puts a `user_id` in `notes` that does not exist in `users`. You cannot create a note for a user that does not exist, and you cannot delete a user while they still have notes. The tables are linked and the database enforces the relationship automatically.
+
+To retrieve data that spans both tables, you use a **JOIN**:
+
+```sql
+SELECT users.name, notes.title, notes.content
+FROM notes
+JOIN users ON notes.user_id = users.id
+WHERE users.id = 42;
+```
+
+This query finds all notes belonging to user 42 by combining rows from both tables where the `user_id` matches. The result:
+
+<table>
+  <thead>
+    <tr>
+      <th>name</th>
+      <th>title</th>
+      <th>content</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Alice</td><td>Meeting notes</td><td>Discussed Q3 roadmap...</td></tr>
+    <tr><td>Alice</td><td>Shopping list</td><td>Milk, eggs, bread...</td></tr>
+  </tbody>
+</table>
+
+<Callout type="tip" title="Foreign Keys Are a Design Tool">
+  Foreign keys do more than enforce rules — they communicate intent. Declaring a foreign key is how you tell both the database and other developers that these two pieces of data are meaningfully related. Databases that skip foreign keys in favour of handling relationships in application code tend to develop integrity problems over time.
+</Callout>
+
+## 4. ACID Properties
+
+Most relational database systems are **ACID compliant**. ACID is an acronym for four properties that together guarantee reliable database behaviour even in the presence of failures, concurrent access, and errors.
+
+<table>
+  <thead>
+    <tr>
+      <th>Property</th>
+      <th>What it means</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Atomicity</strong></td>
+      <td>A transaction is all or nothing. If any part fails, the entire transaction is rolled back.</td>
+    </tr>
+    <tr>
+      <td><strong>Consistency</strong></td>
+      <td>A transaction brings the database from one valid state to another, respecting all defined constraints.</td>
+    </tr>
+    <tr>
+      <td><strong>Isolation</strong></td>
+      <td>Concurrent transactions do not interfere with each other. Each appears to execute in isolation.</td>
+    </tr>
+    <tr>
+      <td><strong>Durability</strong></td>
+      <td>Once a transaction is committed, it persists — even through crashes, power loss, or errors.</td>
+    </tr>
+  </tbody>
+</table>
+
+Durability is directly tied to storing data on disk. Redis, for example, is an in-memory database — it is extremely fast, but because data lives in RAM rather than on disk, it is not durable by default. Redis is sometimes described as partially ACID compliant: it supports atomicity and some isolation, but durability requires additional configuration, and even then it is weaker than a full RDBMS.
+
+## 5. Transactions
+
+A **transaction** is a group of database operations that are executed together as a single unit. The structure is always the same:
+
+```sql
+BEGIN;
+
+  UPDATE accounts SET balance = balance - 500 WHERE id = 1;
+  UPDATE accounts SET balance = balance + 500 WHERE id = 2;
+
+COMMIT;
+```
+
+`BEGIN` opens the transaction. The operations inside are staged but not yet permanent. `COMMIT` makes them permanent — all changes are written to disk and become visible to other connections. If anything goes wrong before `COMMIT`, the transaction can be rolled back:
+
+```sql
+BEGIN;
+
+  UPDATE accounts SET balance = balance - 500 WHERE id = 1;
+  -- something fails here
+
+ROLLBACK;
+-- neither update is persisted; the database is unchanged
+```
+
+Transactions are the mechanism through which atomicity and durability are delivered. Every operation inside a transaction either succeeds completely or leaves no trace.
+
+## 6. Atomicity
+
+Atomicity means a transaction is indivisible. You cannot split a transaction partway through — it either completes entirely or it does not happen at all.
+
+The classic example is a bank transfer: moving money from account A to account B involves two writes. If the system crashes after debiting A but before crediting B, money has been lost.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant DB as Database
+      participant T as Transaction
+
+      T->>DB: BEGIN
+      T->>DB: UPDATE accounts — debit $500 from account A
+      note over DB: Account A: -$500 (not yet committed)
+      T->>DB: 💥 Crash before credit to account B
+
+      note over DB: ROLLBACK triggered automatically
+      DB-->>T: Database restored to state before BEGIN
+      note over DB: Account A unchanged — no money lost`}
+    caption="Without atomicity, a crash mid-transaction would leave the database in an inconsistent state. With atomicity, the entire transaction is rolled back and the database is unchanged."
+  />
+</div>
+
+With a transaction wrapping both operations, the database guarantees that either both writes succeed or neither does. There is no in-between state.
+
+## 7. Isolation
+
+Isolation addresses what happens when multiple transactions run at the same time. Without isolation, transactions can interfere with each other in subtle and damaging ways.
+
+The most common problem is a **dirty read**: a transaction reads data that has been written by another transaction that has not yet committed. If that other transaction is then rolled back, the first transaction was working with data that never actually existed.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant T1 as Transaction 1
+      participant DB as Database
+      participant T2 as Transaction 2
+
+      T1->>DB: BEGIN — debit $500 from account A
+      note over DB: Account A shows $500 less (uncommitted)
+      T2->>DB: BEGIN — reads account A balance
+      DB-->>T2: Returns "dirty" value — $500 already deducted
+      T2->>DB: Adds $200 to the dirty balance and COMMITS
+      T1->>DB: 💥 Fails — ROLLBACK
+      note over DB: Account A restored, but T2 used the wrong balance`}
+    caption="A dirty read: Transaction 2 reads a value written by Transaction 1 before it commits. When Transaction 1 rolls back, Transaction 2 has already acted on data that never existed."
+  />
+</div>
+
+Isolation solves this by **serialising** transactions: even if multiple transactions arrive concurrently, the database executes them in a defined order such that each one sees a consistent snapshot of the database. Transaction 1 fully completes before Transaction 2 begins, or vice versa — they never overlap in a way that allows a dirty read.
+
+## 8. Consistency
+
+Consistency means the database always moves from one valid state to another. Every constraint defined in the schema — nullness, uniqueness, foreign key relationships — must hold true before and after every transaction.
+
+If a transaction would violate any constraint, the database rejects it entirely:
+
+```sql
+-- This will fail if user_id 999 does not exist in the users table
+INSERT INTO notes (id, user_id, title, content)
+VALUES (10, 999, 'Orphan note', 'This user does not exist');
+-- ERROR: insert or update on table "notes" violates foreign key constraint
+```
+
+Consistency is not free. Every foreign key write requires the database to verify that the referenced value exists in the other table. Every uniqueness constraint requires checking the index. These checks add overhead, particularly at scale. That cost is usually worth paying — applications that bypass these constraints in favour of performance often accumulate integrity problems that are expensive to debug and correct later.
+
+<Callout type="note" title="ACID Is a Guarantee, Not a Given">
+  Not every database is ACID compliant. Many NoSQL databases relax one or more of these properties in exchange for performance, availability, or horizontal scalability. Understanding which properties a given database provides — and which it does not — is a core system design skill. The right trade-off depends on what your application actually needs.
+</Callout>
+
+## Summary
+
+<table>
+  <thead>
+    <tr>
+      <th>Concept</th>
+      <th>Key Takeaway</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>B+ tree</strong></td>
+      <td>The internal data structure of most RDBMS. Wide and shallow to minimise disk reads; data only in leaf nodes; leaves linked for range scans.</td>
+    </tr>
+    <tr>
+      <td><strong>Schema</strong></td>
+      <td>The fixed structure of a table: column names, types, and constraints. Every row must conform to it.</td>
+    </tr>
+    <tr>
+      <td><strong>Primary key</strong></td>
+      <td>A column or set of columns that uniquely identifies each row. Typically a single auto-generated integer.</td>
+    </tr>
+    <tr>
+      <td><strong>Foreign key</strong></td>
+      <td>A column whose value must match an existing value in another table. Enforces referential integrity between related tables.</td>
+    </tr>
+    <tr>
+      <td><strong>JOIN</strong></td>
+      <td>A query that combines rows from multiple tables based on a shared column value.</td>
+    </tr>
+    <tr>
+      <td><strong>ACID</strong></td>
+      <td>Atomicity, Consistency, Isolation, Durability — the four properties that guarantee reliable database behaviour.</td>
+    </tr>
+    <tr>
+      <td><strong>Transaction</strong></td>
+      <td>A group of operations wrapped in BEGIN and COMMIT. Succeeds entirely or rolls back entirely.</td>
+    </tr>
+    <tr>
+      <td><strong>Atomicity</strong></td>
+      <td>A transaction is all or nothing. A crash mid-transaction triggers a rollback, leaving the database unchanged.</td>
+    </tr>
+    <tr>
+      <td><strong>Isolation</strong></td>
+      <td>Concurrent transactions are serialised so they cannot interfere with each other or produce dirty reads.</td>
+    </tr>
+    <tr>
+      <td><strong>Consistency</strong></td>
+      <td>All schema constraints hold before and after every transaction. The database rejects any transaction that would violate them.</td>
+    </tr>
+    <tr>
+      <td><strong>Durability</strong></td>
+      <td>Committed transactions survive crashes and power loss. Achieved by writing to disk.</td>
+    </tr>
+  </tbody>
+</table>

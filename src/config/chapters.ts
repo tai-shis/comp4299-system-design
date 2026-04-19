@@ -101,6 +101,26 @@ export const chapters: Chapter[] = [
         description: 'Forward vs. reverse proxies, load balancing algorithms, and layer 4 vs. layer 7.',
         tags: ['proxy', 'load-balancing', 'reverse-proxy'],
       },
+      {
+        title: 'Consistent Hashing',
+        href: '/proxies/consistent-hashing',
+        description: 'The hash ring, minimal remapping on node changes, and virtual nodes.',
+        tags: ['consistent-hashing', 'hash-ring', 'caching'],
+      },
+    ],
+  },
+  {
+    id: 'storage',
+    number: 5,
+    title: 'Storage',
+    description: 'Relational databases, ACID properties, and how data is stored and queried at scale.',
+    pages: [
+      {
+        title: 'Relational Databases',
+        href: '/sql',
+        description: 'B+ trees, schemas, foreign keys, joins, and ACID: atomicity, consistency, isolation, durability.',
+        tags: ['sql', 'rdbms', 'acid', 'transactions'],
+      },
     ],
   },
   // ─── Add future chapters below ────────────────────────────────────────────

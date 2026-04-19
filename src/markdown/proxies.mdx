@@ -181,7 +181,7 @@ CDNs use a form of this: they serve cached content from the edge node nearest th
 
 A hash of the client's IP address determines which server handles the request. Because the same IP always produces the same hash, the same client is consistently routed to the same server.
 
-This is useful in cases where some server-side affinity is needed — for example, if a server maintains a local cache that is warm for a particular client's data. It is not truly stateless, but it is a pragmatic middle ground in some architectures.
+This is useful in cases where some server-side affinity is needed: for example, if a server maintains a local cache that is warm for a particular client's data. The hashing mechanism behind this is worth understanding in more depth, particularly what happens when servers are added or removed from the pool and how to minimise disruption when that occurs. This is covered in [Consistent Hashing](/consistent-hashing).
 
 ## 6. Layer 4 vs. Layer 7 Load Balancers
 
@@ -338,7 +338,7 @@ The right approach for most projects is to pick a cloud-managed load balancer an
     </tr>
     <tr>
       <td><strong>IP hash</strong></td>
-      <td>Consistently routes the same client IP to the same server; useful when server-side affinity is needed.</td>
+      <td>Consistently routes the same client IP to the same server. The underlying mechanism is covered in <a href="/consistent-hashing">Consistent Hashing</a>.</td>
     </tr>
     <tr>
       <td><strong>Layer 4</strong></td>
