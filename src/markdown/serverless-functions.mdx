@@ -1,0 +1,400 @@
+import MermaidDiagram from '@/components/MermaidDiagram';
+import Callout from '@/components/Callout';
+
+# Serverless Functions
+
+These notes introduce serverless functions as an alternative deployment model for backend logic. The API design principles from the previous chapter still apply: you are still designing endpoints, modelling entities, and thinking about request and response shapes. What changes is the infrastructure underneath and the constraints that come with it.
+
+We will use Vercel as the reference platform throughout, given its popularity with Next.js projects and its straightforward mental model. Where behaviour differs between providers, that is called out explicitly.
+
+## Contents
+
+1. [What Is a Serverless Function?](#1-what-is-a-serverless-function)
+2. [Traditional Server vs. Serverless](#2-traditional-server-vs-serverless)
+3. [Statelessness](#3-statelessness)
+4. [Cold Starts](#4-cold-starts)
+5. [Re-implementing the Notes API](#5-re-implementing-the-notes-api)
+6. [Provider Differences](#6-provider-differences)
+7. [When to Use Serverless](#7-when-to-use-serverless)
+8. [Summary](#summary)
+
+## 1. What Is a Serverless Function?
+
+A serverless function is a single unit of backend logic, written as a function, that a cloud provider runs on demand in response to a request. You write the code, deploy it, and the provider handles provisioning servers, scaling, patching, and availability. There is no server for you to think about — hence the name, though servers obviously still exist underneath.
+
+The major providers each have their own implementation of this idea: AWS Lambda, Google Cloud Functions, Cloudflare Workers, and Vercel Functions are the most common. They share the same core model but differ in meaningful ways around runtime limits, cold start behaviour, supported languages, and pricing. The examples in this chapter use **Vercel with Next.js**, which exposes serverless functions through its App Router API routes.
+
+<Callout type="warning" title="Serverless Behaviour Varies Significantly Between Providers">
+  The concepts in this chapter are broadly applicable, but the specifics are Vercel-specific. Execution time limits, cold start characteristics, runtime environments, and deployment models differ enough between AWS Lambda, Cloudflare Workers, and Vercel that code and assumptions from one do not transfer directly to another. Always consult the documentation for the provider you are actually using.
+</Callout>
+
+## 2. Traditional Server vs. Serverless
+
+With a traditional REST server, a single long-lived process boots once and stays running. It listens for incoming requests, handles them one by one (or concurrently), and maintains the same process throughout its lifetime. If traffic increases, you scale by adding more server instances. If traffic drops to zero, the server is still running and still costing money.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant C as Client
+      participant S as REST Server
+
+      note over S: Server boots once and stays alive
+
+      C->>S: POST /note
+      S-->>C: 201 Created
+
+      C->>S: GET /note/note_7x9qm44
+      S-->>C: 200 OK
+
+      C->>S: GET /users/usr_8f3kd92/notes
+      S-->>C: 200 OK
+
+      note over S: Process stays alive between all requests`}
+    caption="A traditional REST server is a persistent process. It boots once and handles every subsequent request within the same running environment."
+  />
+</div>
+
+With serverless, there is no persistent process. Each incoming request causes the provider to run your function, and when the function returns a response, that execution ends. The provider decides when to spin up new instances and when to tear them down. If no requests arrive, nothing is running.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant C as Client
+      participant P as Vercel Platform
+      participant F as Function Instance
+
+      C->>P: POST /api/note
+      P->>F: Spin up instance, invoke function
+      F-->>P: 201 Created
+      P-->>C: 201 Created
+      note over F: Instance may be kept warm or shut down
+
+      C->>P: GET /api/note/note_7x9qm44
+      P->>F: Invoke function (warm or new instance)
+      F-->>P: 200 OK
+      P-->>C: 200 OK`}
+    caption="A serverless function has no persistent process. The platform manages invocation and instance lifecycle. Each request may land on a fresh or reused instance."
+  />
+</div>
+
+The practical difference for a developer: with a traditional server, you control when the process starts and what it holds in memory for the duration of its life. With serverless, you give up that control entirely. The platform decides.
+
+## 3. Statelessness
+
+The REST chapter introduced statelessness as a constraint: every request should carry all the information the server needs to process it, and the server should store no session state between requests. This was a recommendation for REST servers.
+
+For serverless functions, it is not a recommendation. It is a hard constraint.
+
+Because each invocation may run on a completely fresh instance, any data stored in memory during one request is not guaranteed to exist when the next request arrives. A variable set at module scope might persist across requests on a warm instance, or it might not. You cannot rely on it.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      subgraph "What you cannot do"
+        F1["Function Instance A\nstores note in memory"]
+        R1["Next request\nmay land on Instance B\nno memory of Instance A"]
+        F1 --> R1
+      end
+      subgraph "What you must do"
+        F2["Function Instance\nwrites note to database"]
+        DB[("External Database")]
+        F3["Any future instance\nreads from database"]
+        F2 --> DB --> F3
+      end`}
+    caption="Serverless functions cannot rely on in-memory state surviving between invocations. Any data that needs to persist must live in an external store."
+  />
+</div>
+
+Every piece of state that needs to outlive a single invocation must live in an external store: a database, a cache like Redis, or object storage like S3. The function itself is purely a stateless handler.
+
+<Callout type="note" title="Module-Level Code Does Sometimes Persist">
+  On Vercel and other providers, a warm instance may reuse the same module environment across multiple invocations. This means module-level code (database connection setup, for example) can sometimes be cached between requests as an optimisation. This is an implementation detail of the platform, not something to rely on for application logic. Never store request-specific data at module scope.
+</Callout>
+
+## 4. Cold Starts
+
+Because there is no always-on process, the first request to a function that has not been recently invoked requires the provider to provision a new execution environment before the function can actually run. This is a **cold start**. Subsequent requests that land on an already-running instance skip this step — those are **warm invocations**.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant C as Client
+      participant P as Platform
+      participant F as Function
+
+      note over C,F: Cold invocation
+
+      C->>P: Request arrives
+      P->>F: Provision environment
+      P->>F: Load function code
+      P->>F: Invoke handler
+      F-->>P: Response
+      P-->>C: Response (higher latency)
+
+      note over C,F: Warm invocation (subsequent request)
+
+      C->>P: Request arrives
+      P->>F: Invoke handler directly
+      F-->>P: Response
+      P-->>C: Response (lower latency)`}
+    caption="A cold start adds provisioning and code-loading time before the handler runs. Warm invocations skip straight to the handler."
+  />
+</div>
+
+Cold starts are typically measured in tens to hundreds of milliseconds, though this varies by provider, runtime, and how much code your function loads at startup. For most applications they are imperceptible. For latency-sensitive endpoints (real-time features, interactive UIs waiting on a response) they can be a genuine problem.
+
+Vercel mitigates cold starts by keeping instances warm for active deployments, but does not eliminate them entirely. Providers like Cloudflare Workers use a different execution model (V8 isolates rather than full Node.js environments) that significantly reduces cold start time, but introduces other constraints in return.
+
+<Callout type="tip" title="Keep Functions Small to Reduce Cold Start Time">
+  The more code a function loads at startup, the longer a cold start takes. Avoid importing large libraries that are only needed conditionally, and split unrelated logic into separate functions rather than bundling everything into one. A function that only loads what it needs will start faster.
+</Callout>
+
+## 5. Re-implementing the Notes API
+
+The notes API from the previous chapter defined three core endpoints. Below is how those same endpoints are structured as Vercel serverless functions using the Next.js App Router.
+
+In Next.js, API routes live under the `app/api/` directory. Each folder maps to a URL segment, and a `route.ts` file inside it exports named functions corresponding to HTTP verbs. This is the file-system routing convention Vercel uses to determine which function handles which request.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      subgraph "File System"
+        A["app/api/note/route.ts"]
+        B["app/api/note/[noteId]/route.ts"]
+        C["app/api/users/[userId]/notes/route.ts"]
+      end
+      subgraph "Endpoints"
+        D["POST /api/note"]
+        E["GET /api/note/:noteId"]
+        F["GET /api/users/:userId/notes"]
+      end
+      A --> D
+      B --> E
+      C --> F`}
+    caption="Next.js maps the file system to API endpoints. Each route.ts file handles requests for its corresponding URL, with folder names in square brackets becoming dynamic parameters."
+  />
+</div>
+
+### Create a note
+
+```
+POST /api/note
+```
+
+```ts
+// app/api/note/route.ts
+
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function POST(req: NextRequest) {
+  const body = await req.json();
+  const { userId, title, content, tags, sectionId } = body;
+
+  if (!userId || !title || !content) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Request body is missing required fields.',
+          details: [
+            !userId && { field: 'userId', issue: 'Field is required.' },
+            !title && { field: 'title', issue: 'Field is required.' },
+            !content && { field: 'content', issue: 'Field is required.' },
+          ].filter(Boolean),
+        },
+      },
+      { status: 400 }
+    );
+  }
+
+  // Write to your database here
+  const note = await db.notes.create({
+    userId,
+    title,
+    content,
+    tags: tags ?? [],
+    sectionId: sectionId ?? null,
+  });
+
+  return NextResponse.json(note, { status: 201 });
+}
+```
+
+The exported function name matches the HTTP verb (`POST`). The request body is parsed from JSON, required fields are validated, and the response is returned using `NextResponse.json`. The `db.notes.create` call represents whatever database client you are using — the function itself stays thin.
+
+### Get a single note
+
+```
+GET /api/note/:noteId
+```
+
+```ts
+// app/api/note/[noteId]/route.ts
+
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { noteId: string } }
+) {
+  const { noteId } = params;
+
+  const note = await db.notes.findById(noteId);
+
+  if (!note) {
+    return NextResponse.json(
+      { error: { code: 'NOT_FOUND', message: 'Note not found.' } },
+      { status: 404 }
+    );
+  }
+
+  return NextResponse.json(note, { status: 200 });
+}
+```
+
+The dynamic segment `[noteId]` in the folder name becomes a parameter available on the `params` object. If no note is found for that ID, the function returns a structured `404` rather than letting the database error surface unhandled.
+
+### Get all notes for a user (paginated)
+
+```
+GET /api/users/:userId/notes?limit=10&offset=0
+```
+
+```ts
+// app/api/users/[userId]/notes/route.ts
+
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { userId: string } }
+) {
+  const { userId } = params;
+  const { searchParams } = req.nextUrl;
+
+  const limit = Math.min(Number(searchParams.get('limit') ?? 20), 100);
+  const offset = Number(searchParams.get('offset') ?? 0);
+
+  const { notes, total } = await db.notes.findByUser(userId, { limit, offset });
+
+  return NextResponse.json({ notes, total, limit, offset }, { status: 200 });
+}
+```
+
+Query parameters are read from `req.nextUrl.searchParams`. The `limit` is clamped to a maximum of `100` server-side, matching the design principle from the previous chapter: never let user input drive an unbounded query.
+
+<Callout type="note" title="The API Contract Is the Same">
+  The request shapes, response shapes, status codes, and pagination parameters are identical to what was designed in the previous chapter. Serverless changes how the code is deployed and run, not what the API promises to its callers.
+</Callout>
+
+## 6. Provider Differences
+
+Serverless functions are not a single standardised technology. Each provider implements the model differently, and those differences can matter significantly when choosing a platform or debugging behaviour that does not match expectations.
+
+<table>
+  <thead>
+    <tr>
+      <th>Dimension</th>
+      <th>Vercel</th>
+      <th>AWS Lambda</th>
+      <th>Cloudflare Workers</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Runtime</strong></td>
+      <td>Node.js (default), Edge runtime available</td>
+      <td>Node.js, Python, Go, Java, Ruby, and others</td>
+      <td>V8 isolates; limited Node.js compatibility</td>
+    </tr>
+    <tr>
+      <td><strong>Max execution time</strong></td>
+      <td>10s (Hobby), 15s (Pro), 300s (Enterprise)</td>
+      <td>Up to 15 minutes</td>
+      <td>30s (CPU time); effectively unlimited wall time</td>
+    </tr>
+    <tr>
+      <td><strong>Cold starts</strong></td>
+      <td>Present; mitigated for active deployments</td>
+      <td>Present; can be significant for large runtimes</td>
+      <td>Very fast; isolates start in under 5ms typically</td>
+    </tr>
+    <tr>
+      <td><strong>Pricing model</strong></td>
+      <td>Per invocation and compute time; generous free tier</td>
+      <td>Per invocation and GB-seconds of compute</td>
+      <td>Per request; very low cost at scale</td>
+    </tr>
+    <tr>
+      <td><strong>Deployment</strong></td>
+      <td>Git-based via Vercel dashboard or CLI</td>
+      <td>ZIP upload, container image, or IaC (CDK, Terraform)</td>
+      <td>Wrangler CLI or git integration</td>
+    </tr>
+  </tbody>
+</table>
+
+<Callout type="warning" title="Edge Runtime Is a Different Environment">
+  Vercel offers an Edge runtime in addition to its standard Node.js runtime. Edge functions run closer to the user geographically and start faster, but they run in a restricted environment that does not support all Node.js APIs. Standard database clients, for instance, may not work on the Edge runtime without a compatible adapter. Check compatibility before choosing Edge for a data-heavy route.
+</Callout>
+
+## 7. When to Use Serverless
+
+Serverless is a good fit when traffic is unpredictable or spiky, when the workload is composed of small discrete operations, or when you want to avoid the operational overhead of managing a persistent server. Common examples include webhook handlers, background tasks triggered by events (sending an email on sign-up, processing an image on upload), and APIs for projects where traffic is low or variable enough that paying for idle server time makes no sense.
+
+It is a poor fit for long-running processes, anything that genuinely needs to hold shared state in memory across requests, or workloads with consistently high and predictable traffic where a dedicated server would be cheaper and simpler. If your function regularly runs for more than a few seconds, or if your use case requires holding an open connection to many concurrent clients, a traditional server is likely the better choice.
+
+For a Next.js project in particular, serverless is often the natural default: Vercel deploys API routes as functions automatically, the operational overhead is near zero, and the pricing works well for projects at typical indie or startup scale. The constraints become relevant mostly when you grow into them.
+
+<Callout type="tip" title="Start Serverless, Migrate When You Have a Reason">
+  For most new projects, starting with serverless and migrating specific routes to a dedicated server only when a concrete constraint forces it is a sound approach. Serverless lets you ship quickly without infrastructure decisions, and the API contract your callers depend on does not change when you swap the deployment model underneath it.
+</Callout>
+
+## Summary
+
+<table>
+  <thead>
+    <tr>
+      <th>Concept</th>
+      <th>Key Takeaway</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Serverless function</strong></td>
+      <td>A single unit of backend logic run on demand by a cloud provider, with no persistent server to manage</td>
+    </tr>
+    <tr>
+      <td><strong>Traditional server</strong></td>
+      <td>A long-lived process that boots once and handles requests continuously; you manage its lifecycle</td>
+    </tr>
+    <tr>
+      <td><strong>Statelessness</strong></td>
+      <td>Not a recommendation in serverless but a hard constraint; in-memory state does not reliably survive between invocations</td>
+    </tr>
+    <tr>
+      <td><strong>Cold start</strong></td>
+      <td>The latency penalty on the first invocation of an idle function, caused by provisioning a new execution environment</td>
+    </tr>
+    <tr>
+      <td><strong>Warm invocation</strong></td>
+      <td>A request handled by an already-running instance; skips provisioning and runs at normal latency</td>
+    </tr>
+    <tr>
+      <td><strong>File-system routing</strong></td>
+      <td>Next.js maps <code>app/api/</code> folder structure to endpoint URLs; <code>route.ts</code> exports named functions per HTTP verb</td>
+    </tr>
+    <tr>
+      <td><strong>Provider differences</strong></td>
+      <td>Runtime, execution limits, cold start behaviour, and pricing vary significantly between Vercel, Lambda, and Cloudflare Workers</td>
+    </tr>
+    <tr>
+      <td><strong>Good fit</strong></td>
+      <td>Spiky or unpredictable traffic, event-driven tasks, low operational overhead requirements</td>
+    </tr>
+    <tr>
+      <td><strong>Poor fit</strong></td>
+      <td>Long-running processes, shared in-memory state, consistently high traffic with predictable load</td>
+    </tr>
+  </tbody>
+</table>
