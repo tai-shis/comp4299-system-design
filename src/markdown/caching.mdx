@@ -1,0 +1,344 @@
+import MermaidDiagram from '@/components/MermaidDiagram';
+import Callout from '@/components/Callout';
+
+# Caching Fundamentals
+
+**Resources:** <br/>
+[HelloInterview — Caching](https://www.hellointerview.com/learn/system-design/core-concepts/caching) <br/>
+[Neetcode — Caching](https://neetcode.io/courses/system-design-for-beginners/10) <br/>
+[Neetcode — CDNs](https://neetcode.io/courses/system-design-for-beginners/11) <br/>
+**More resources are linked throughout as needed for small explanations / examples**
+
+Caching is the practice of storing copies of data in a faster storage layer so that future requests
+for that data can be served more quickly than fetching it from the primary source. It is one of the
+most important tools for building scalable, low-latency systems.
+
+## Where to Cache
+
+Caching is not limited to a single layer. It can be applied at the client, network edge,
+application process, or as a standalone service. Each layer solves a different problem and carries
+its own trade-offs.
+
+<div className="large-diagram">
+<MermaidDiagram chart={`graph TD
+    A[Client Device] -->|HTTP Cache| B[CDN Edge]
+    B -->|Static Assets| C[Reverse Proxy]
+    C --> D[App Server]
+    D -->|In-Process Cache| D
+    D -->|Network Call| E[External Cache - Redis]
+    E -->|Cache Miss| F[(Database)]
+    D -->|Cache Miss| F`
+} />
+</div>
+
+### External Caching
+
+An external cache is a standalone service (i.e. [Redis](https://redis.io/) or [Memcached](https://memcached.org/)) that an application
+communicates with over the network. Every application instance can share the same cache, making it a very scalable caching solution.
+
+External caches support eviction policies (LRU (Least Recently Used), LFU (Least Frequently Used)) and key expiration via TTL (Time to Live), which keeps
+memory usage bounded. The downside is the added network hop compared to reading from local memory.
+
+**When to use:** Any high-traffic system where multiple application instances need a shared,
+fast-access data layer.
+
+### CDN (Content Delivery Network)
+
+A CDN is a geographically distributed network of edge servers that caches content close to end
+users. The classic use case is static media delivery: images, CSS, JavaScript, and video files.
+Modern CDNs from providers like Cloudflare, Fastly, and Akamai can also cache API responses,
+HTML pages, and run edge logic.
+
+<div className="large-diagram">
+<MermaidDiagram chart={`sequenceDiagram
+    participant User
+    participant CDN as CDN Edge Server
+    participant Origin as Origin Server
+    User->>CDN: Request image.png
+    alt Cache Hit
+        CDN-->>User: Return cached image (20-40ms)
+    else Cache Miss
+        CDN->>Origin: Fetch image.png
+        Origin-->>CDN: Return image
+        CDN->>CDN: Store in edge cache
+        CDN-->>User: Return image
+    end
+    Note over User,CDN: Subsequent requests from same region are served from edge`
+} />
+</div>
+
+The latency difference is dramatic. A request from India to a Virginia-based origin might add
+250–300ms of latency. A CDN edge server in Mumbai serves the same asset in 20–40ms.
+
+**When to use:** When the system serves static media at scale.
+
+### Client-Side Caching
+
+Client-side caching keeps data on the user's device. This includes things like: browser HTTP cache, localStorage,
+service workers, or mobile app local storage. This eliminates network calls entirely for
+cached resources.
+
+This layer also extends beyond end-user devices. For example, Redis client libraries cache
+cluster topology metadata so the client can route requests directly to the correct shard
+without querying the cluster on every operation.
+
+**Trade-off:** Limited control from the backend. Data can go stale (i.e. outdated or unused), and invalidation is
+harder since you cannot force a client to evict cached entries.
+
+**When to use:** For data the user has already fetched that does not change frequently.
+Offline-capable mobile apps, browser asset caching, and reducing redundant API calls are
+all common applications.
+
+<Callout type="note">
+Try to avoid caching large amounts of data, especially on a mobile application where a user
+may not have a significant amount of excess storage. 
+</Callout>
+
+### In-Process Caching
+
+In-process caching stores data directly in the application's memory — a hash map, a
+`ConcurrentDictionary`, or a library like [Guava Cache](https://guava.dev/releases/21.0/api/docs/com/google/common/cache/Cache.html)
+or [.NET `MemoryCache`](https://learn.microsoft.com/en-us/aspnet/core/performance/caching/memory?view=aspnetcore-10.0). Reads are the
+fastest possible because there is zero network overhead.
+
+This is ideal for small, frequently accessed, rarely changing data:
+
+- Configuration values and feature flags
+- Small reference datasets (country codes, currency mappings)
+- Hot keys that would otherwise overload Redis
+- Rate limiting counters
+- Precomputed values
+
+The limitation is that each application instance maintains its own cache. If one instance
+invalidates a value, the others do not know. This means in-process caching is best used as
+a supplementary optimization layer on top of an external cache, not a replacement for one.
+
+**When to use:** As a speed optimization for small, stable data.
+
+## Cache Architectures (Read/Write Patterns)
+
+How you read from and write to the cache determines your system's performance characteristics,
+consistency guarantees, and complexity. There are four core patterns.
+
+<div className="large-diagram">
+<MermaidDiagram chart={`graph TD
+    subgraph Read Patterns
+        CA[Cache-Aside - App manages cache]
+        RT[Read-Through - Cache fetches on miss]
+    end
+    subgraph Write Patterns
+        WT[Write-Through - Sync write to both]
+        WB[Write-Behind - Async write to DB]
+    end
+    CA -.- WT
+    RT -.- WT
+    CA -.- WB`
+} />
+</div>
+
+### Cache-Aside (Lazy Loading)
+
+<div className="large-diagram">
+<MermaidDiagram chart={`sequenceDiagram
+    participant App as Application
+    participant Cache as Cache (Redis)
+    participant DB as Database
+    App->>Cache: GET user:123
+    alt Cache Hit
+        Cache-->>App: Return cached data
+    else Cache Miss
+        Cache-->>App: null
+        App->>DB: SELECT * FROM users WHERE id=123
+        DB-->>App: User data
+        App->>Cache: SET user:123 (with TTL)
+        App-->>App: Return data
+    end`
+} />
+</div>
+
+The application checks the cache first. On a miss, it queries the database, writes the result
+into the cache, and returns the data. Only requested data gets cached, keeping memory lean.
+
+**Trade-off:** Extra latency on a cache miss `total latency = cache check + DB query + cache write`.
+
+### Write-Through
+
+The application writes to the cache, and the cache synchronously writes to the database before
+acknowledging the operation. Both stores are always in sync.
+
+<div className="large-diagram">
+<MermaidDiagram chart={`sequenceDiagram
+    participant App as Application
+    participant Cache as Cache
+    participant DB as Database
+    App->>Cache: Write user:123
+    Cache->>DB: Write to database (sync)
+    DB-->>Cache: Acknowledged
+    Cache-->>App: Write confirmed`
+} />
+</div>
+
+**Trade-off:** Higher write latency since both the cache and the database must complete
+before the client gets a response. It can also pollute the cache with data that may never
+be read again.
+
+Write-through still faces the dual-write problem: if the cache update succeeds but the
+database write fails (or vice versa), the two stores become inconsistent. Retry logic
+or distributed transactions are needed to handle this.
+
+**When to use:** When reads must always return fresh data and your system can tolerate
+slower writes. Less common than cache-aside in practice.
+
+<Callout type="important">
+The slower writes can become a **massive** bottleneck in large systems. Every write must wait for both the cache and database to complete.
+</Callout>
+
+### Write-Behind (Write-Back)
+
+The application writes to the cache, and the cache asynchronously flushes data to the
+database in batches in the background.
+
+<div className="large-diagram">
+<MermaidDiagram chart={`sequenceDiagram
+    participant App as Application
+    participant Cache as Cache
+    participant DB as Database
+    App->>Cache: Write user:123
+    Cache-->>App: Write confirmed (immediate)
+    Note over Cache,DB: Async batch flush
+    Cache->>DB: Batch write (background)
+    DB-->>Cache: Acknowledged`
+} />
+</div>
+
+Writes are extremely fast because the application does not wait for the database. The risk
+is data loss — if the cache crashes before flushing, un-persisted writes are lost.
+
+**When to use:** High write-throughput workloads where eventual consistency is acceptable.
+Analytics pipelines, metrics collection, and activity logging are typical use cases.
+
+### Read-Through
+
+The cache itself acts as a proxy. The application never talks directly to the database.
+On a cache miss, the cache fetches the data from the database, stores it, and returns it.
+
+This is the read-side equivalent of write-through. CDNs are a real-world example of
+read-through caching — on a miss, the CDN fetches from your origin, caches the result,
+and serves it.
+
+For application-level caching with Redis, cache-aside is far more common than read-through
+because it keeps the caching logic in the application where it is easier to control and debug.
+
+## Cache Eviction Policies
+
+Eviction policies determine which entries get removed when the cache is full.
+
+<table>
+  <thead>
+    <tr>
+      <th>Policy</th>
+      <th>Mechanism</th>
+      <th>Best For</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>LRU</strong> (Least Recently Used)</td>
+      <td>Evicts the item not accessed for the longest time</td>
+      <td>General-purpose; the safe default</td>
+    </tr>
+    <tr>
+      <td><strong>LFU</strong> (Least Frequently Used)</td>
+      <td>Evicts the item with the fewest total accesses</td>
+      <td>Data with stable popularity patterns (trending content, top playlists)</td>
+    </tr>
+    <tr>
+      <td><strong>FIFO</strong> (First In, First Out)</td>
+      <td>Evicts the oldest inserted item regardless of usage</td>
+      <td>Simple layers where access patterns don't matter much</td>
+    </tr>
+    <tr>
+      <td><strong>TTL</strong> (Time To Live)</td>
+      <td>Expires entries after a set duration</td>
+      <td>Freshness-sensitive data (API responses, sessions); usually combined with LRU or LFU</td>
+    </tr>
+  </tbody>
+</table>
+
+LRU is the default in most systems. TTL is almost always used alongside another policy to enforce freshness guarantees.
+
+## Common Caching Problems
+
+Caching introduces its own class of failure modes.
+
+### Cache Stampede (Thundering Herd)
+
+When a popular cache entry expires, many concurrent requests discover the miss simultaneously
+and all rush to the database to rebuild the entry. Instead of one query, you get hundreds or
+thousands, potentially overwhelming the database.
+
+<div className="large-diagram">
+<MermaidDiagram chart={`sequenceDiagram
+    participant R1 as Request 1
+    participant R2 as Request 2
+    participant R3 as Request N...
+    participant Cache as Cache
+    participant DB as Database
+    Note over Cache: Popular key expires
+    R1->>Cache: GET trending_feed (MISS)
+    R2->>Cache: GET trending_feed (MISS)
+    R3->>Cache: GET trending_feed (MISS)
+    R1->>DB: Expensive query
+    R2->>DB: Expensive query
+    R3->>DB: Expensive query
+    Note over DB: Database overwhelmed`
+} />
+</div>
+
+**Mitigations:**
+
+- **Request coalescing (single-flight):** Only one request is allowed to rebuild the cache.
+  All others wait for that result. This is the most effective solution.
+- **Probabilistic early expiration:** Randomly refresh the entry slightly before it actually
+  expires, so the stampede window never opens.
+- **Cache warming:** Proactively refresh popular keys before TTL expiry. Only helps with
+  TTL-based expiration, not write-based invalidation.
+
+### Cache Consistency
+
+The cache and the database can return different values for the same data. This is inherent
+in most caching setups because writes go to the database first, leaving a window where the
+cache holds stale data.
+
+**Mitigations:**
+
+- **Invalidate on write:** Delete the cache entry immediately after updating the database so
+  the next read fetches fresh data.
+- **Short TTLs:** Allow slightly stale data to live temporarily if eventual consistency is
+  acceptable for the use case.
+- **Accept eventual consistency:** For feeds, dashboards, and analytics, a brief delay between
+  write and cache refresh is usually fine.
+
+### Hot Keys
+
+A hot key is a cache entry that receives disproportionately high traffic. Even with a high
+cache hit rate, a single hot key can overload one cache node or Redis shard.
+
+**Mitigations:**
+
+- **Replicate the key** across multiple cache nodes and load-balance reads across them.
+- **Local fallback cache:** Keep the hottest values in the application's in-process cache to
+  avoid hammering Redis.
+- **Rate limiting:** Throttle abusive or excessive traffic on specific keys.
+
+### When to Introduce Caching
+
+Strong signs your service or application needs to introduce caching:
+
+- **Read-heavy workload:** Millions of daily reads hitting the database repeatedly with
+  the same queries.
+- **Expensive computations:** Queries that join many tables or aggregate large datasets,
+  taking hundreds of milliseconds each.
+- **High database CPU:** The database is CPU-bound during peak hours serving repetitive reads.
+- **Strict latency requirements:** The system needs sub-10ms responses but database queries
+  take 30ms+.
