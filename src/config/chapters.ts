@@ -96,6 +96,26 @@ export const chapters: Chapter[] = [
       },
     ]
   },
+  }
+    id: 'proxies',
+    number: 4,
+    title: 'Proxies',
+    description: 'Forward proxies, reverse proxies, load balancers, and how they fit into scalable system design.',
+    pages: [
+      {
+        title: 'Proxies and Load Balancing',
+        href: '/proxies',
+        description: 'Forward vs. reverse proxies, load balancing algorithms, and layer 4 vs. layer 7.',
+        tags: ['proxy', 'load-balancing', 'reverse-proxy'],
+      },
+      {
+        title: 'Consistent Hashing',
+        href: '/proxies/consistent-hashing',
+        description: 'The hash ring, minimal remapping on node changes, and virtual nodes.',
+        tags: ['consistent-hashing', 'hash-ring', 'caching'],
+      },
+    ],
+  },
   {
     id: 'caching',
     number: 5,
@@ -109,7 +129,21 @@ export const chapters: Chapter[] = [
         tags: ['CDN, external-cache, internal-cache, Redis']
       }
     ]
-  }
+ 
+  {
+    id: 'storage',
+    number: 6,
+    title: 'Storage',
+    description: 'Relational databases, ACID properties, and how data is stored and queried at scale.',
+    pages: [
+      {
+        title: 'Relational Databases',
+        href: '/sql',
+        description: 'B+ trees, schemas, foreign keys, joins, and ACID: atomicity, consistency, isolation, durability.',
+        tags: ['sql', 'rdbms', 'acid', 'transactions'],
+      },
+    ],
+  },
   // ─── Add future chapters below ────────────────────────────────────────────
   // {
   //   id: 'databases',
