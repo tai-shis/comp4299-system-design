@@ -96,6 +96,20 @@ export const chapters: Chapter[] = [
       },
     ]
   },
+  {
+    id: 'caching',
+    number: 5,
+    title: "Caching",
+    description: 'Caching types, use cases, when and where to implement',
+    pages: [
+      {
+        title: "Caching Basics",
+        href: '/docs/caching',
+        description: 'Caching types, use cases, when and where to implement',
+        tags: ['CDN, external-cache, internal-cache, Redis']
+      }
+    ]
+  }
   // ─── Add future chapters below ────────────────────────────────────────────
   // {
   //   id: 'databases',
