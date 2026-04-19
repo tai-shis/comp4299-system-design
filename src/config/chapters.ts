@@ -59,15 +59,15 @@ export const chapters: Chapter[] = [
         title: 'Networking Basics',
         href: '/docs/networking/basics',
         description: 'Networking basics, TCP, UDP, HTTP, and DNS',
-        tags: ['networking', 'sockets', 'http', 'network layers']
+        tags: ['networking', 'sockets', 'http', 'network layers'],
       },
       {
         title: 'Web Sockets in Action',
         href: '/docs/networking/ws-demonstration',
         description: 'Web socket bi-directional communication video demonstration.',
         tags: ['web sockets', 'example', 'stock ticker'],
-        wip: true
-      }
+        wip: true,
+      },
     ],
   },
   {
@@ -94,9 +94,9 @@ export const chapters: Chapter[] = [
         description: 'Statelessness, cold starts, provider differences, and when to use serverless.',
         tags: ['serverless', 'vercel', 'aws-lambda', 'cold-starts'],
       },
-    ]
+    ],
   },
-  }
+  {
     id: 'proxies',
     number: 4,
     title: 'Proxies',
@@ -119,17 +119,17 @@ export const chapters: Chapter[] = [
   {
     id: 'caching',
     number: 5,
-    title: "Caching",
+    title: 'Caching',
     description: 'Caching types, use cases, when and where to implement',
     pages: [
       {
-        title: "Caching Basics",
+        title: 'Caching Basics',
         href: '/docs/caching',
         description: 'Caching types, use cases, when and where to implement',
-        tags: ['CDN, external-cache, internal-cache, Redis']
-      }
-    ]
- 
+        tags: ['CDN', 'external-cache', 'internal-cache', 'Redis'],
+      },
+    ],
+  },
   {
     id: 'storage',
     number: 6,
