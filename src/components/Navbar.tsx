@@ -31,7 +31,7 @@ export default function Navbar({ collapsed }: NavbarProps) {
 
   return (
     <aside
-      className={`${collapsed ? 'w-0' : 'w-64'} shrink-0 border-r border-gray-800 flex flex-col bg-[#0a0a0f] overflow-hidden transition-[width] duration-200`}
+      className={`absolute left-0 top-0 h-full w-64 z-20 border-r border-gray-800 flex flex-col bg-[#0a0a0f] overflow-hidden transition-transform duration-200 ${collapsed ? '-translate-x-full' : 'translate-x-0'}`}
     >
       <nav className="flex-1 overflow-y-auto py-2 [&::-webkit-scrollbar]:hidden [scrollbar-width:none] [-ms-overflow-style:none]">
         {chapters.map((chapter: Chapter) => {
