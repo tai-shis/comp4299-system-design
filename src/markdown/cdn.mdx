@@ -1,0 +1,213 @@
+import MermaidDiagram from '@/components/MermaidDiagram';
+import Callout from '@/components/Callout';
+
+# Content Delivery Networks
+
+A content delivery network (CDN) is a geographically distributed network of servers that cache and serve content closer to end users. The core idea is simple: a request that travels 50km to the nearest CDN server is faster than one that travels 5,000km to a distant origin server.
+
+## Contents
+
+1. [The Problem CDNs Solve](#1-the-problem-cdns-solve)
+2. [How CDNs Work](#2-how-cdns-work)
+3. [What Can Be Cached](#3-what-can-be-cached)
+4. [Push CDN](#4-push-cdn)
+5. [Pull CDN](#5-pull-cdn)
+6. [Push vs. Pull](#6-push-vs-pull)
+7. [Summary](#summary)
+
+## 1. The Problem CDNs Solve
+
+Without a CDN, every request for every asset goes to the origin server, regardless of where the user is. A user in Tokyo requesting a site hosted in Virginia has to wait for every image, stylesheet, and video to travel across the Pacific.
+
+This creates two problems. The first is latency: physical distance adds real time to every request. The second is load: if millions of users are all hitting the same origin server for the same static files, that server spends enormous resources re-serving identical content.
+
+A CDN solves both by caching copies of static content at servers distributed around the world, called **edge servers** or **points of presence (PoPs)**. Users are routed to whichever PoP is closest to them, typically via DNS resolution or anycast routing.
+
+## 2. How CDNs Work
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      Origin["Origin server"]
+      Origin -->|cached content| CDN1["CDN PoP\nNorth America"]
+      Origin -->|cached content| CDN2["CDN PoP\nEurope"]
+      Origin -->|cached content| CDN3["CDN PoP\nAsia"]
+      U1["User in New York"] --> CDN1
+      U2["User in London"] --> CDN2
+      U3["User in Tokyo"] --> CDN3`}
+    caption="CDN points of presence cache content from the origin and serve it to users from the nearest location, reducing latency and load on the origin."
+  />
+</div>
+
+When a CDN serves a request, the origin server is not involved at all. The edge server handles the request entirely from its cache. Only cache misses or expired content requires a trip back to the origin.
+
+CDNs also protect the origin from traffic spikes. During a sudden surge, the CDN absorbs the load. Without it, that surge hits the origin directly, which can cause slowdowns or downtime.
+
+## 3. What Can Be Cached
+
+CDNs are designed for **static content**: files that do not change per user or per request. This includes:
+
+- Images, videos, and audio files
+- JavaScript and CSS bundles
+- HTML pages that are the same for all users
+- Fonts
+- Downloadable files and documents
+
+Dynamic content generated per user (a personalised dashboard, a shopping cart, an authenticated API response) cannot be cached on a CDN, because the response differs for every user. That traffic must reach the origin server.
+
+In practice, however, static assets are often the heaviest files. A single video file or a full-resolution image dwarfs the size of the JSON payload from an API call. Caching these at the edge delivers significant performance gains even though dynamic content still flows through the origin.
+
+<Callout type="note" title="Edge Computing Extends What CDNs Can Do">
+  Some CDN providers now offer **edge computing**: the ability to run small pieces of server-side code at the CDN's PoPs, close to the user. Cloudflare Workers and Vercel's Edge Runtime are examples. This allows certain dynamic operations (authentication checks, personalisation, A/B testing logic) to execute at the edge rather than the origin, reducing latency for requests that would otherwise require a round trip. This is a more advanced pattern and is not required for a basic CDN setup.
+</Callout>
+
+## 4. Push CDN
+
+In a push CDN, content is proactively uploaded to the CDN by the application. When a file is added or updated on the origin, the application pushes a copy to all CDN edge servers immediately. Users who later request that file will always find it cached, regardless of which PoP they hit.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant App as Application
+      participant O as Origin server
+      participant CDN as CDN edge servers
+
+      App->>O: Upload new profile picture
+      O-->>App: Stored
+      App->>CDN: Push profile picture to all PoPs
+      CDN-->>App: Cached on all edge servers
+
+      participant U as User
+      U->>CDN: Request profile picture
+      CDN-->>U: Served from cache (no origin hit)`}
+    caption="Push CDN: content is proactively distributed to all edge servers when it is created or updated. Every request is guaranteed to be served from cache."
+  />
+</div>
+
+Push CDNs work well for content that is:
+
+- Accessed frequently enough to justify having it on every PoP
+- Known at upload time (not generated on demand)
+- Relatively small in total volume
+
+The downside is that every PoP stores every file regardless of whether users in that region will ever request it. If your application serves users primarily in Europe, pushing content to PoPs in South America wastes storage and synchronisation overhead.
+
+## 5. Pull CDN
+
+A pull CDN does not pre-populate edge servers. Instead, it behaves like a cache with a warm-up phase. When a user requests a file:
+
+1. The CDN checks its local cache for that file.
+2. If it is not cached (a cache miss), the CDN fetches it from the origin, caches it, and serves it to the user.
+3. All subsequent requests for the same file from the same PoP are served from cache.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant U1 as First user
+      participant CDN as CDN PoP
+      participant O as Origin server
+      participant U2 as Later users
+
+      U1->>CDN: Request image (cache miss)
+      CDN->>O: Fetch image from origin
+      O-->>CDN: Image returned
+      CDN-->>U1: Image served and cached
+      U2->>CDN: Request same image (cache hit)
+      CDN-->>U2: Served from cache, no origin hit`}
+    caption="Pull CDN: the first request for a file at a given PoP causes a cache miss and fetches from origin. All subsequent requests at that PoP are served from cache."
+  />
+</div>
+
+Pull CDNs scale well because storage is used lazily. Only content that is actually requested by users in a region gets cached in that region. A PoP in Tokyo will not hold a file that no Tokyo users have ever requested.
+
+The trade-off is the first-request latency penalty at each PoP. The very first user to request a file at a given edge location experiences a round trip to the origin. For popular content, this happens rarely and the benefit of cached responses outweighs it. For rarely accessed content, the cache may expire before a second user in that region ever requests it, meaning the origin is hit almost every time.
+
+## 6. Push vs. Pull
+
+<table>
+  <thead>
+    <tr>
+      <th>Dimension</th>
+      <th>Push CDN</th>
+      <th>Pull CDN</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Content population</strong></td>
+      <td>Proactive: pushed to all PoPs at upload time</td>
+      <td>Lazy: cached at each PoP on first request</td>
+    </tr>
+    <tr>
+      <td><strong>First request latency</strong></td>
+      <td>None: always in cache</td>
+      <td>Higher: origin fetch on cache miss</td>
+    </tr>
+    <tr>
+      <td><strong>Storage efficiency</strong></td>
+      <td>Lower: all content on all PoPs</td>
+      <td>Higher: only requested content is cached</td>
+    </tr>
+    <tr>
+      <td><strong>Best for</strong></td>
+      <td>High-traffic content accessed globally</td>
+      <td>Large libraries where content varies by region</td>
+    </tr>
+    <tr>
+      <td><strong>Control</strong></td>
+      <td>Application controls exactly what is cached and when</td>
+      <td>CDN decides based on request patterns</td>
+    </tr>
+  </tbody>
+</table>
+
+Most large CDN providers (Cloudflare, AWS CloudFront, Fastly) operate as pull CDNs by default, with options to pre-warm the cache for specific content where guaranteed zero-miss performance is required.
+
+<Callout type="tip" title="Use Object Storage as the CDN Origin">
+  A common production architecture is to store static files in object storage (such as S3) and configure a CDN to pull from that bucket as its origin. The object storage holds the canonical copy; the CDN handles global distribution and caching. This keeps the application server entirely out of the path for static asset delivery.
+</Callout>
+
+## Summary
+
+<table>
+  <thead>
+    <tr>
+      <th>Concept</th>
+      <th>Key Takeaway</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>CDN</strong></td>
+      <td>A network of geographically distributed edge servers that cache static content close to users to reduce latency and origin load.</td>
+    </tr>
+    <tr>
+      <td><strong>Edge server / PoP</strong></td>
+      <td>A CDN server located in a specific region. Users are routed to the nearest one.</td>
+    </tr>
+    <tr>
+      <td><strong>Static content</strong></td>
+      <td>Files that are the same for all users: images, videos, JS, CSS, fonts. These can be cached on a CDN.</td>
+    </tr>
+    <tr>
+      <td><strong>Dynamic content</strong></td>
+      <td>Responses generated per user or per request. These cannot be cached on a CDN and must reach the origin.</td>
+    </tr>
+    <tr>
+      <td><strong>Push CDN</strong></td>
+      <td>Content is proactively distributed to all PoPs at upload time. No first-request latency, but storage is used whether or not the content is requested.</td>
+    </tr>
+    <tr>
+      <td><strong>Pull CDN</strong></td>
+      <td>Content is cached at a PoP on first request. Storage is used efficiently, but the first request at each PoP hits the origin.</td>
+    </tr>
+    <tr>
+      <td><strong>Cache miss</strong></td>
+      <td>When a PoP does not have the requested file cached. The PoP fetches it from the origin, caches it, and serves it.</td>
+    </tr>
+    <tr>
+      <td><strong>Edge computing</strong></td>
+      <td>Running small pieces of server logic at CDN PoPs. Allows some dynamic operations to execute close to the user without reaching the origin.</td>
+    </tr>
+  </tbody>
+</table>

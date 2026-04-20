@@ -103,13 +103,13 @@ export const chapters: Chapter[] = [
     pages: [
       {
         title: 'Proxies and Load Balancing',
-        href: '/proxies',
+        href: '/docs/proxies',
         description: 'Forward vs. reverse proxies, load balancing algorithms, and layer 4 vs. layer 7.',
         tags: ['proxy', 'load-balancing', 'reverse-proxy'],
       },
       {
         title: 'Consistent Hashing',
-        href: '/proxies/consistent-hashing',
+        href: '/docs/proxies/consistent-hashing',
         description: 'The hash ring, minimal remapping on node changes, and virtual nodes.',
         tags: ['consistent-hashing', 'hash-ring', 'caching'],
       },
@@ -127,6 +127,12 @@ export const chapters: Chapter[] = [
         description: 'Caching types, use cases, when and where to implement',
         tags: ['CDN', 'external-cache', 'internal-cache', 'Redis'],
       },
+      {
+        title: 'Content Delivery Networks',
+        href: '/docs/caching/cdn',
+        description: 'Edge servers, push vs. pull CDNs, and how CDNs reduce latency and origin load.',
+        tags: ['cdn', 'edge', 'push-cdn', 'pull-cdn'],
+      },
     ],
   },
   {
@@ -137,31 +143,31 @@ export const chapters: Chapter[] = [
     pages: [
       {
         title: 'Relational Databases',
-        href: '/storage/sql',
+        href: '/docs/storage/sql',
         description: 'B+ trees, schemas, foreign keys, joins, and ACID: atomicity, consistency, isolation, durability.',
         tags: ['sql', 'rdbms', 'acid', 'transactions'],
       },
       {
         title: 'NoSQL Databases',
-        href: '/storage/nosql',
+        href: '/docs/storage/nosql',
         description: 'Key-value, document, wide-column, and graph databases. BASE properties and eventual consistency.',
         tags: ['nosql', 'mongodb', 'redis', 'cassandra', 'eventual-consistency'],
       },
       {
         title: 'Replication and Sharding',
-        href: '/storage/replication-sharding',
+        href: '/docs/storage/replication-sharding',
         description: 'Scaling reads and writes across multiple nodes with replication and sharding.',
         tags: ['replication', 'sharding', 'scaling', 'leader-follower'],
       },
       {
         title: 'CAP Theorem',
-        href: '/storage/cap-theorem',
+        href: '/docs/storage/cap-theorem',
         description: 'Consistency, availability, and partition tolerance — and the PACELC extension.',
         tags: ['cap-theorem', 'pacelc', 'consistency', 'distributed-systems'],
       },
       {
         title: 'Object Storage',
-        href: '/storage/object-storage',
+        href: '/docs/storage/object-storage',
         description: 'BLOBs, flat namespaces, unique keys, and when to use S3-style storage.',
         tags: ['object-storage', 's3', 'blob', 'cdn'],
       },
