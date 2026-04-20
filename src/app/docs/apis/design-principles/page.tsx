@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import PageLayout from '@/components/PageLayout';
-import ApiDesignMDX from '@/markdown/api-design.mdx';
+import ApiDesignMDX from '@/markdown/apis/api-design.mdx';
 
 export const metadata: Metadata = {
   title: 'API Design Principles',

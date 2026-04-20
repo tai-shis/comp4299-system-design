@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import PageLayout from '@/components/PageLayout';
-import Caching from '@/markdown/caching.mdx'; // ← change this
+import Caching from '@/markdown/caching/caching.mdx';
 
 export const metadata: Metadata = {
   title: 'Caching',                               // ← change this

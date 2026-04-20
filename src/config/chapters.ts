@@ -173,6 +173,26 @@ export const chapters: Chapter[] = [
       },
     ],
   },
+  {
+    id: 'big-data',
+    number: 7,
+    title: 'Big Data',
+    description: 'Message queues, pub/sub patterns, and event-driven architectures for large-scale systems.',
+    pages: [
+      {
+        title: 'Message Queues',
+        href: '/docs/big-data/message-queues',
+        description: 'Async processing, pub/sub, durability, acknowledgements, and Kafka vs. RabbitMQ vs. SQS.',
+        tags: ['message-queues', 'pub-sub', 'kafka', 'rabbitmq', 'async'],
+      },
+      {
+        title: 'MapReduce',
+        href: '/docs/big-data/map-reduce',
+        description: 'Batch vs. stream processing, the map/shuffle/reduce model, and modern alternatives like Spark.',
+        tags: ['mapreduce', 'batch-processing', 'spark', 'distributed-computing'],
+      },
+    ],
+  },
   // ─── Add future chapters below ────────────────────────────────────────────
   // {
   //   id: 'databases',

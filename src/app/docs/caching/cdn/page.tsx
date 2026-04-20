@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import PageLayout from '@/components/PageLayout';
-import CdnMDX from '@/markdown/cdn.mdx';
+import CdnMDX from '@/markdown/caching/cdn.mdx';
 
 export const metadata: Metadata = {
   title: 'Content Delivery Networks',

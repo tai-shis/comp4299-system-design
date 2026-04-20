@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import PageLayout from '@/components/PageLayout';
-import CapTheoremMDX from '@/markdown/cap-theorem.mdx';
+import CapTheoremMDX from '@/markdown/storage/cap-theorem.mdx';
 
 export const metadata: Metadata = {
   title: 'CAP Theorem',

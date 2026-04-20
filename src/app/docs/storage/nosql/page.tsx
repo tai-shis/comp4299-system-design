@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import PageLayout from '@/components/PageLayout';
-import NoSqlMDX from '@/markdown/nosql.mdx';
+import NoSqlMDX from '@/markdown/storage/nosql.mdx';
 
 export const metadata: Metadata = {
   title: 'NoSQL Databases',

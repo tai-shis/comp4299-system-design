@@ -1,0 +1,162 @@
+import MermaidDiagram from '@/components/MermaidDiagram';
+import Callout from '@/components/Callout';
+
+# MapReduce
+
+MapReduce is a programming model for processing massive datasets in parallel across many machines. It was introduced by Google in 2004 and became the foundation for big data processing frameworks. While MapReduce itself is largely considered outdated today, the conceptual model it introduced is still worth understanding.
+
+## Contents
+
+1. [The Problem: Processing Data at Scale](#1-the-problem-processing-data-at-scale)
+2. [Batch vs. Stream Processing](#2-batch-vs-stream-processing)
+3. [The MapReduce Model](#3-the-mapreduce-model)
+4. [A Worked Example: Word Count](#4-a-worked-example-word-count)
+5. [The Shuffle Step](#5-the-shuffle-step)
+6. [Summary](#summary)
+
+## 1. The Problem: Processing Data at Scale
+
+Imagine a dataset of one billion financial records, each containing a person's address, date of birth, social security number, and income. The task is to redact all sensitive fields across every record.
+
+Running this on a single machine is technically possible, but it would take a very long time. The dataset is too large to fit in memory, so it must be read from disk in chunks. The processing is single-threaded. There is no way to make use of the idle CPU cores on other machines sitting in the same data centre.
+
+The natural solution is to split the data across many machines, process each chunk in parallel, and combine the results. This is the idea MapReduce formalises.
+
+## 2. Batch vs. Stream Processing
+
+Before getting into MapReduce specifically, it is worth distinguishing the two modes of large-scale data processing.
+
+**Batch processing** operates on a fixed, known dataset. All the data exists upfront. The system takes it in, processes it, and produces a result. Batch jobs can be run on a schedule (hourly, nightly) to process data that has accumulated since the last run.
+
+**Stream processing** operates on data as it arrives. There is no fixed dataset; data flows in continuously and is processed in real time. Payment fraud detection, real-time analytics dashboards, and live redaction of sensitive data in a transaction stream are all stream processing problems. Stream processing is more complex to implement because the system must handle out-of-order events, late arrivals, and partial state.
+
+MapReduce is a batch processing model. The data must exist in full before the job begins.
+
+## 3. The MapReduce Model
+
+A MapReduce job has three phases: **Map**, **Shuffle**, and **Reduce**. A master node coordinates the work across a pool of worker nodes.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart TD
+      Input["Input data\n(large dataset)"]
+      Input --> M1["Map worker 1\nprocesses chunk 1"]
+      Input --> M2["Map worker 2\nprocesses chunk 2"]
+      Input --> M3["Map worker 3\nprocesses chunk 3"]
+      M1 --> Shuffle["Shuffle\ngroup by key"]
+      M2 --> Shuffle
+      M3 --> Shuffle
+      Shuffle --> R1["Reduce worker 1\naggregates key group A"]
+      Shuffle --> R2["Reduce worker 2\naggregates key group B"]
+      R1 --> Output["Final output"]
+      R2 --> Output`}
+    caption="MapReduce splits input data across Map workers, shuffles intermediate output by key, then aggregates each key group in a Reduce worker."
+  />
+</div>
+
+**Map phase:** the input dataset is split into chunks. Each chunk is assigned to a Map worker. The worker processes its chunk independently, producing a set of intermediate key-value pairs. Each Map worker runs in parallel with all others.
+
+**Shuffle phase:** the intermediate key-value pairs from all Map workers are redistributed so that all pairs sharing the same key end up on the same Reduce worker. This step is handled automatically by the framework.
+
+**Reduce phase:** each Reduce worker receives all the values for a particular set of keys and aggregates them into a final result. Reduce workers also run in parallel, each responsible for a different subset of keys.
+
+## 4. A Worked Example: Word Count
+
+Counting how many times each word appears in a large collection of text is the canonical MapReduce example.
+
+Suppose the input is a large book, split into three chunks.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      C1["Chunk 1:\nthe cat sat on\nthe mat"]
+      C2["Chunk 2:\nthe cat ate the\nrat"]
+      C3["Chunk 3:\nthe rat sat\non the mat"]
+      C1 --> M1["Map worker 1\nthe:1, cat:1, sat:1\non:1, the:1, mat:1"]
+      C2 --> M2["Map worker 2\nthe:1, cat:1, ate:1\nthe:1, rat:1"]
+      C3 --> M3["Map worker 3\nthe:1, rat:1, sat:1\non:1, the:1, mat:1"]`}
+    caption="Each Map worker processes its chunk independently and emits a key-value pair for every word it encounters."
+  />
+</div>
+
+Each Map worker emits one `(word, 1)` pair for every word it sees. It does not try to count or aggregate; it simply emits a pair per occurrence. This simplicity is deliberate: the Map function is stateless and easy to parallelise.
+
+After the Map phase, the intermediate output might look like this across all workers:
+
+```
+the:1, cat:1, sat:1, on:1, the:1, mat:1   (from worker 1)
+the:1, cat:1, ate:1, the:1, rat:1          (from worker 2)
+the:1, rat:1, sat:1, on:1, the:1, mat:1   (from worker 3)
+```
+
+## 5. The Shuffle Step
+
+All of those individual `(word, 1)` pairs need to be brought together before counts can be summed. This is the purpose of the shuffle step: it groups all values by key so that every occurrence of `"the"` ends up on the same Reduce worker, every occurrence of `"cat"` ends up on the same worker, and so on.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      Intermediate["Intermediate pairs\nfrom all Map workers"]
+      Intermediate --> Shuffle["Shuffle by key"]
+      Shuffle --> R1["Reduce worker 1\nthe: 1,1,1,1,1\ncat: 1,1"]
+      Shuffle --> R2["Reduce worker 2\nsat: 1,1\non: 1,1\nmat: 1,1"]
+      Shuffle --> R3["Reduce worker 3\nrat: 1,1\nate: 1"]
+      R1 --> O1["the: 5\ncat: 2"]
+      R2 --> O2["sat: 2\non: 2\nmat: 2"]
+      R3 --> O3["rat: 2\nate: 1"]`}
+    caption="The shuffle redistributes intermediate pairs so each Reduce worker receives all values for its assigned keys. Each Reduce worker then sums the values to produce the final count."
+  />
+</div>
+
+Each Reduce worker sums the values for its assigned keys and emits the final count. The results from all Reduce workers are combined into the final output.
+
+The shuffle step is typically the most expensive part of a MapReduce job because it requires transferring intermediate data across the network between machines. Minimising the amount of data that needs to be shuffled is one of the primary optimisation targets in MapReduce jobs.
+
+<Callout type="note" title="MapReduce Is Largely Superseded">
+  MapReduce was groundbreaking in 2004 but is considered outdated by modern standards. Its primary limitation is that all data must be read from and written to disk between each phase, which is slow. Apache Spark addressed this by keeping intermediate data in memory, achieving much faster performance for iterative workloads. Spark and similar frameworks (Flink, Beam) have largely replaced MapReduce in production. The conceptual model of map, shuffle, and reduce remains relevant and is used internally by many modern systems.
+</Callout>
+
+## Summary
+
+<table>
+  <thead>
+    <tr>
+      <th>Concept</th>
+      <th>Key Takeaway</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>MapReduce</strong></td>
+      <td>A batch processing model for running parallel computations across a large dataset on many machines.</td>
+    </tr>
+    <tr>
+      <td><strong>Batch processing</strong></td>
+      <td>Processing a fixed, known dataset all at once. Data exists upfront. Jobs can be scheduled on an interval.</td>
+    </tr>
+    <tr>
+      <td><strong>Stream processing</strong></td>
+      <td>Processing data as it arrives in real time. No fixed dataset. More complex than batch processing.</td>
+    </tr>
+    <tr>
+      <td><strong>Map phase</strong></td>
+      <td>Input is split into chunks. Each chunk is processed by a Map worker in parallel, emitting intermediate key-value pairs.</td>
+    </tr>
+    <tr>
+      <td><strong>Shuffle phase</strong></td>
+      <td>Intermediate key-value pairs are redistributed so all values for the same key end up on the same Reduce worker.</td>
+    </tr>
+    <tr>
+      <td><strong>Reduce phase</strong></td>
+      <td>Each Reduce worker aggregates all values for its assigned keys and produces the final output.</td>
+    </tr>
+    <tr>
+      <td><strong>Master node</strong></td>
+      <td>Coordinates the job: assigns chunks to Map workers, manages the shuffle, and collects Reduce output.</td>
+    </tr>
+    <tr>
+      <td><strong>Modern alternatives</strong></td>
+      <td>Apache Spark keeps intermediate data in memory rather than writing to disk, making it significantly faster for most workloads.</td>
+    </tr>
+  </tbody>
+</table>

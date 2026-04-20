@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import PageLayout from '@/components/PageLayout';
-import ProxiesMDX from '@/markdown/proxies.mdx';
+import ProxiesMDX from '@/markdown/proxies/proxies.mdx';
 
 export const metadata: Metadata = {
   title: 'Proxies and Load Balancers',

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import PageLayout from '@/components/PageLayout';
-import ReplicationShardingMDX from '@/markdown/replications-sharding.mdx';
+import ReplicationShardingMDX from '@/markdown/storage/replications-sharding.mdx';
 
 export const metadata: Metadata = {
   title: 'Replication and Sharding',

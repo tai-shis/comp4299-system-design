@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import PageLayout from '@/components/PageLayout';
-import ObjectStorageMDX from '@/markdown/object-storage.mdx';
+import ObjectStorageMDX from '@/markdown/storage/object-storage.mdx';
 
 export const metadata: Metadata = {
   title: 'Object Storage',

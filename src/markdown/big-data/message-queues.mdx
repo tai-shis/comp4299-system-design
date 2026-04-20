@@ -1,0 +1,208 @@
+import MermaidDiagram from '@/components/MermaidDiagram';
+import Callout from '@/components/Callout';
+
+# Message Queues
+
+Message queues are a way to handle application events asynchronously. Rather than processing every event immediately as it arrives, events are stored in a queue and processed at the application's own pace. This decouples the producer of events from the consumer, improving resilience and scalability.
+
+## Contents
+
+1. [The Problem Message Queues Solve](#1-the-problem-message-queues-solve)
+2. [How a Queue Works](#2-how-a-queue-works)
+3. [Pull-Based vs. Push-Based](#3-pull-based-vs-push-based)
+4. [Durability and Acknowledgements](#4-durability-and-acknowledgements)
+5. [The Publisher-Subscriber Pattern](#5-the-publisher-subscriber-pattern)
+6. [Topics and Subscriptions](#6-topics-and-subscriptions)
+7. [Common Implementations](#7-common-implementations)
+8. [Summary](#summary)
+
+## 1. The Problem Message Queues Solve
+
+Some workloads produce events faster than downstream systems can process them. A user uploads a video, triggering transcoding, thumbnail generation, and analytics logging simultaneously. A flash sale generates thousands of orders per second, each needing payment processing and inventory updates. If every event requires an immediate synchronous response, the system either slows to a crawl or drops requests entirely.
+
+Horizontal scaling is one response: add more servers. But scaling takes time and costs money, and not every event needs to be processed immediately. If an analytics event can be processed ten seconds later without affecting the user experience, there is no reason to pay for the capacity to process it instantly.
+
+A message queue solves this by acting as a buffer. Events are written to the queue as fast as they arrive, and consumers process them at whatever pace they can sustain. The producer never waits for the consumer.
+
+## 2. How a Queue Works
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      P1["Producer\nApp server"]
+      P2["Producer\nApp server"]
+      Q["Message Queue"]
+      C1["Consumer\nWorker"]
+      C2["Consumer\nWorker"]
+      P1 --> Q
+      P2 --> Q
+      Q --> C1
+      Q --> C2`}
+    caption="Multiple producers write events to the queue. Multiple consumers pull from it. Neither side needs to know about the other."
+  />
+</div>
+
+Queues process messages in **FIFO** order (first in, first out) by default. An event written first will be consumed first. This makes queues well suited for ordered workloads like payment processing, where sequence matters.
+
+The producer and consumer are fully decoupled. The producer does not know how many consumers exist, and consumers do not know which producer sent a given message. Either side can scale independently.
+
+## 3. Pull-Based vs. Push-Based
+
+There are two models for how consumers receive messages from the queue.
+
+**Pull-based:** the consumer polls the queue and requests messages when it is ready to process them. This gives the consumer full control over its own pace. If the consumer is busy, it simply does not pull. Messages accumulate in the queue until the consumer is ready.
+
+**Push-based:** the queue delivers messages to the consumer as they arrive. If the consumer fails to acknowledge a message within a timeout, the queue assumes delivery failed and retries. This continues until the consumer acknowledges receipt.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant Q as Queue
+      participant C as Consumer
+
+      note over Q,C: Push-based delivery
+      Q->>C: Deliver message
+      note over C: Consumer processes message
+      C-->>Q: Acknowledge
+      Q->>C: Deliver next message
+
+      note over Q,C: Push-based with retry
+      Q->>C: Deliver message
+      note over C: Consumer unavailable
+      Q->>C: Retry after timeout
+      C-->>Q: Acknowledge`}
+    caption="In push-based delivery, the queue retries unacknowledged messages until the consumer confirms receipt. Messages are never silently dropped."
+  />
+</div>
+
+## 4. Durability and Acknowledgements
+
+Messages in a queue are stored on disk, not in memory. This means the queue survives restarts, crashes, and failures without losing events. A message that has been written to the queue will stay there until a consumer successfully processes and acknowledges it.
+
+The acknowledgement mechanism is what guarantees delivery. Until a consumer sends an acknowledgement, the queue treats the message as undelivered and will redeliver it. This ensures that no message is lost due to a consumer crash mid-processing.
+
+<Callout type="note" title="At-Least-Once Delivery">
+  The retry mechanism means a message may be delivered more than once if a consumer processes it but crashes before sending the acknowledgement. This is called at-least-once delivery. Applications that consume from a queue should be designed to handle duplicate messages gracefully, either by making operations idempotent or by tracking which messages have already been processed.
+</Callout>
+
+## 5. The Publisher-Subscriber Pattern
+
+As systems grow, a single queue between one producer and one consumer is often not enough. Multiple services may need to react to the same event. A payment event might need to be processed by a payment service, logged by an analytics service, and backed up by a data archival service.
+
+The **publisher-subscriber pattern** (pub/sub) generalises the queue model to support this fan-out. Instead of sending a message directly to a consumer, a producer (the **publisher**) sends it to a named channel called a **topic**. Any number of consumers (the **subscribers**) can subscribe to that topic and each receive their own copy of the message.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      Pub["Publisher"]
+      T["Topic:\npayment.completed"]
+      S1["Subscription:\nPayment service"]
+      S2["Subscription:\nAnalytics service"]
+      S3["Subscription:\nArchival service"]
+      Pub --> T
+      T --> S1
+      T --> S2
+      T --> S3`}
+    caption="A publisher sends a message to a topic. Each subscription receives its own independent copy. Subscribers consume from their subscription without affecting others."
+  />
+</div>
+
+The publisher does not know how many subscribers exist. Adding a new subscriber to a topic requires no change to the publisher. This makes pub/sub a powerful pattern for extensible architectures where new consumers need to be added over time.
+
+## 6. Topics and Subscriptions
+
+A **topic** is a named stream of messages. Publishers write to topics; subscribers read from them.
+
+A **subscription** is a consumer's individual view of a topic. Each subscription maintains its own position in the message stream, so multiple subscriptions on the same topic each receive every message independently. One subscription processing slowly does not affect the others.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart TD
+      P1["Payment service"]
+      P2["Order service"]
+      T1["Topic: payments"]
+      T2["Topic: orders"]
+      T1 --> Sub1["Subscription"]
+      T1 --> Sub2["Subscription"]
+      T2 --> Sub3["Subscription"]
+      Sub1 --> W1["Payment processor"]
+      Sub2 --> W2["Analytics writer"]
+      Sub3 --> W3["Inventory updater"]
+      P1 --> T1
+      P2 --> T2`}
+    caption="Topics separate concerns by event type. Each topic fans out to multiple subscriptions, each consumed by a different service."
+  />
+</div>
+
+A practical example: an e-commerce platform might have a `payment.completed` topic. One subscription feeds a service that updates the order status. Another feeds a service that sends a confirmation email. A third feeds a data warehouse for analytics. All three react to the same event without any of them knowing about the others.
+
+## 7. Common Implementations
+
+**Open source:**
+
+- **RabbitMQ:** a mature, widely used message broker supporting multiple messaging protocols. Good for complex routing and traditional queue workloads.
+- **Apache Kafka:** designed for high-throughput, durable event streaming. Messages are retained on disk for a configurable period rather than deleted on acknowledgement, making Kafka suitable for event sourcing and replay. Used at very large scale.
+- **ActiveMQ:** an older but still widely deployed open-source broker.
+
+**Cloud-managed:**
+
+- **AWS SQS:** simple, scalable queue service. Pairs with **AWS SNS** for pub/sub fan-out.
+- **Google Cloud Pub/Sub:** managed pub/sub with strong durability guarantees.
+- **Azure Service Bus:** supports both queues and topics with rich filtering options.
+
+<Callout type="tip" title="Kafka Is Not Just a Queue">
+  Apache Kafka is often described as a message queue, but it is more accurately an event streaming platform. Unlike traditional queues where messages are deleted after consumption, Kafka retains messages on disk and allows consumers to replay the event log from any point. This makes it suitable for use cases beyond simple task queues, including event sourcing, stream processing, and audit logs.
+</Callout>
+
+## Summary
+
+<table>
+  <thead>
+    <tr>
+      <th>Concept</th>
+      <th>Key Takeaway</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Message queue</strong></td>
+      <td>A durable buffer that decouples producers from consumers, allowing events to be processed asynchronously at the consumer's own pace.</td>
+    </tr>
+    <tr>
+      <td><strong>FIFO</strong></td>
+      <td>Messages are processed in the order they were written. First in, first out.</td>
+    </tr>
+    <tr>
+      <td><strong>Pull-based</strong></td>
+      <td>The consumer requests messages when it is ready. Consumer controls its own pace.</td>
+    </tr>
+    <tr>
+      <td><strong>Push-based</strong></td>
+      <td>The queue delivers messages to the consumer. Unacknowledged messages are retried until confirmed.</td>
+    </tr>
+    <tr>
+      <td><strong>Acknowledgement</strong></td>
+      <td>A signal from the consumer confirming a message was successfully processed. Without it, the queue redelivers the message.</td>
+    </tr>
+    <tr>
+      <td><strong>At-least-once delivery</strong></td>
+      <td>Messages may be delivered more than once due to retries. Consumers should handle duplicates.</td>
+    </tr>
+    <tr>
+      <td><strong>Publisher-subscriber</strong></td>
+      <td>Publishers write to topics; subscribers each receive their own copy. Supports fan-out to multiple independent consumers.</td>
+    </tr>
+    <tr>
+      <td><strong>Topic</strong></td>
+      <td>A named channel that publishers write to and subscribers read from.</td>
+    </tr>
+    <tr>
+      <td><strong>Subscription</strong></td>
+      <td>A consumer's independent view of a topic. Multiple subscriptions on the same topic each receive every message.</td>
+    </tr>
+    <tr>
+      <td><strong>Kafka</strong></td>
+      <td>An event streaming platform that retains messages on disk, allowing consumers to replay the event log from any point.</td>
+    </tr>
+  </tbody>
+</table>
