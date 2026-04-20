@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import PageLayout from '@/components/PageLayout';
-import ServerlessFunctionsMDX from '@/markdown/serverless-functions.mdx';
+import ServerlessFunctionsMDX from '@/markdown/apis/serverless-functions.mdx';
 
 export const metadata: Metadata = {
   title: 'Serverless Functions',

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import PageLayout from '@/components/PageLayout';
-import ConsistentHashingMDX from '@/markdown/consistent-hashing.mdx';
+import ConsistentHashingMDX from '@/markdown/proxies/consistent-hashing.mdx';
 
 export const metadata: Metadata = {
   title: 'Consistent Hashing',

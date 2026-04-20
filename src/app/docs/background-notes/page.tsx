@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import PageLayout from '@/components/PageLayout';
-import BackgroundNotesMDX from '@/markdown/background-notes.mdx';
+import BackgroundNotesMDX from '@/markdown/fundamentals/background-notes.mdx';
 
 export const metadata: Metadata = {
   title: 'Background Notes',

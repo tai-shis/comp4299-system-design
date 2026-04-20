@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import PageLayout from '@/components/PageLayout';
-import WSDemonstration from '@/markdown/ws-example-page.mdx';
+import WSDemonstration from '@/markdown/networking/ws-example-page.mdx';
 
 export const metadata: Metadata = {
   title: 'Networking',

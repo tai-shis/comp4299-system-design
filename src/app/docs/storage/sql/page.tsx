@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import PageLayout from '@/components/PageLayout';
-import SqlMDX from '@/markdown/sql.mdx';
+import SqlMDX from '@/markdown/storage/sql.mdx';
 
 export const metadata: Metadata = {
   title: 'Relational Databases',

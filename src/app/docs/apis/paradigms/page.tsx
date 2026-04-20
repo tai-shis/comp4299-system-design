@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import PageLayout from '@/components/PageLayout';
-import ApiParadigmsMDX from '@/markdown/api-paradigms.mdx';
+import ApiParadigmsMDX from '@/markdown/apis/api-paradigms.mdx';
 
 export const metadata: Metadata = {
   title: 'API Paradigms',
