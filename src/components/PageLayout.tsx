@@ -75,12 +75,12 @@ export default function PageLayout({ children, maxWidth = 'md' }: PageLayoutProp
         </div>
       </header>
 
-      {/* Body: sidebar + content */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* Body: relative container so sidebar can overlay */}
+      <div className="relative flex-1 overflow-hidden">
         <Navbar collapsed={collapsed} />
 
-        {/* Scrollable content area */}
-        <div className="flex-1 overflow-y-auto flex flex-col min-w-0">
+        {/* Scrollable content area — always full width */}
+        <div className="h-full overflow-y-auto flex flex-col">
           <main className={`${maxWidthClass[maxWidth]} mx-auto w-full px-6 py-14 flex-1`}>
             {children}
           </main>
