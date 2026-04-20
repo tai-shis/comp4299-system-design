@@ -153,6 +153,12 @@ export const chapters: Chapter[] = [
         description: 'Scaling reads and writes across multiple nodes with replication and sharding.',
         tags: ['replication', 'sharding', 'scaling', 'leader-follower'],
       },
+      {
+        title: 'CAP Theorem',
+        href: '/storage/cap-theorem',
+        description: 'Consistency, availability, and partition tolerance — and the PACELC extension.',
+        tags: ['cap-theorem', 'pacelc', 'consistency', 'distributed-systems'],
+      },
     ],
   },
   // ─── Add future chapters below ────────────────────────────────────────────
