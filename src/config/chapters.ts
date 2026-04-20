@@ -66,7 +66,6 @@ export const chapters: Chapter[] = [
         href: '/docs/networking/ws-demonstration',
         description: 'Web socket bi-directional communication video demonstration.',
         tags: ['web sockets', 'example', 'stock ticker'],
-        wip: true,
       },
     ],
   },
@@ -138,9 +137,33 @@ export const chapters: Chapter[] = [
     pages: [
       {
         title: 'Relational Databases',
-        href: '/sql',
+        href: '/storage/sql',
         description: 'B+ trees, schemas, foreign keys, joins, and ACID: atomicity, consistency, isolation, durability.',
         tags: ['sql', 'rdbms', 'acid', 'transactions'],
+      },
+      {
+        title: 'NoSQL Databases',
+        href: '/storage/nosql',
+        description: 'Key-value, document, wide-column, and graph databases. BASE properties and eventual consistency.',
+        tags: ['nosql', 'mongodb', 'redis', 'cassandra', 'eventual-consistency'],
+      },
+      {
+        title: 'Replication and Sharding',
+        href: '/storage/replication-sharding',
+        description: 'Scaling reads and writes across multiple nodes with replication and sharding.',
+        tags: ['replication', 'sharding', 'scaling', 'leader-follower'],
+      },
+      {
+        title: 'CAP Theorem',
+        href: '/storage/cap-theorem',
+        description: 'Consistency, availability, and partition tolerance — and the PACELC extension.',
+        tags: ['cap-theorem', 'pacelc', 'consistency', 'distributed-systems'],
+      },
+      {
+        title: 'Object Storage',
+        href: '/storage/object-storage',
+        description: 'BLOBs, flat namespaces, unique keys, and when to use S3-style storage.',
+        tags: ['object-storage', 's3', 'blob', 'cdn'],
       },
     ],
   },

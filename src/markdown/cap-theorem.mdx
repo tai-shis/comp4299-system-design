@@ -1,0 +1,139 @@
+import MermaidDiagram from '@/components/MermaidDiagram';
+import Callout from '@/components/Callout';
+
+# CAP Theorem
+
+The CAP theorem is one of the most cited ideas in distributed systems and also one of the most frequently misapplied. These notes cover what it actually says, where it applies, and how the PACELC extension gives a more practical framing.
+
+## Contents
+
+1. [What CAP Applies To](#1-what-cap-applies-to)
+2. [The Three Properties](#2-the-three-properties)
+3. [The Trade-off](#3-the-trade-off)
+4. [PACELC: A More Practical Extension](#4-pacelc-a-more-practical-extension)
+5. [Summary](#summary)
+
+## 1. What CAP Applies To
+
+CAP theorem applies specifically to **distributed databases** where data is replicated across multiple nodes. It does not apply to a single-node database. If someone invokes CAP theorem in the context of a standalone database with no replication, they are misapplying it.
+
+The moment data is replicated across multiple machines, the network between those machines can fail. Two nodes that were communicating can lose the ability to reach each other. This is called a **network partition**, and it is the event that CAP theorem reasons about.
+
+## 2. The Three Properties
+
+CAP stands for **Consistency**, **Availability**, and **Partition Tolerance**.
+
+**Consistency** in CAP has a specific meaning: every read returns the most recent write, or an error. If a write was made to one node, any subsequent read from any node in the system must reflect that write. No node is allowed to return stale data.
+
+**Availability** means every node in the system responds to valid requests. A node cannot refuse a request or return an error simply because it is out of sync with another node. It must respond, even if the data it returns is not the most recent.
+
+**Partition Tolerance** means the system continues operating even when a network partition occurs and some nodes can no longer communicate with others.
+
+<Callout type="note" title="Partition Tolerance Is Not Optional">
+  In any real distributed system, network partitions will eventually happen. Hardware fails, cables get cut, routing tables go wrong. Partition tolerance is not a property you choose; it is a baseline requirement. This means the real trade-off in CAP is always between consistency and availability when a partition occurs.
+</Callout>
+
+## 3. The Trade-off
+
+When a network partition occurs, the nodes on each side of the partition cannot synchronise with each other. At that moment, the system must make a choice.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart TD
+      P["Network partition occurs"]
+      P --> C["Choose consistency"]
+      P --> A["Choose availability"]
+      C --> C1["Nodes that cannot confirm\nthey have the latest data\nrefuse to respond"]
+      C2["No stale reads.\nSome requests return errors."]
+      C1 --> C2
+      A --> A1["All nodes continue\nresponding to requests"]
+      A2["No downtime.\nSome reads may return stale data."]
+      A1 --> A2`}
+    caption="When a partition occurs, a distributed system must choose: refuse requests to preserve consistency, or keep responding and accept the risk of stale data."
+  />
+</div>
+
+**Choosing consistency** means that if a node cannot confirm it has the most recent data (because it cannot reach the leader), it refuses to respond rather than return potentially stale data. Some requests will fail or time out during the partition. Once the partition heals and the node catches up, it resumes serving requests. No read will ever return stale data, but availability is sacrificed during the partition.
+
+**Choosing availability** means every node keeps responding to requests throughout the partition. Nodes that are out of sync will serve whatever data they have, which may be stale. No requests are refused, but consistency is sacrificed: different nodes may return different values for the same key during the partition.
+
+In practice, **most distributed systems choose availability**. For the vast majority of applications, returning data that is a few seconds stale is far less damaging than refusing to respond at all. This is why most NoSQL databases, by default, lean toward the availability side of the trade-off.
+
+<Callout type="tip" title="CAP Is About Partitions, Not Normal Operation">
+  CAP theorem only describes the choice that must be made when a partition actually occurs. During normal operation with no partition, a well-designed distributed system can provide both consistency and availability. The theorem is about the failure case, not the steady state.
+</Callout>
+
+## 4. PACELC: A More Practical Extension
+
+CAP theorem has a limitation: it only reasons about the case where a partition occurs. In practice, partitions are rare. What distributed systems deal with constantly is the everyday trade-off between latency and consistency, even when all nodes are healthy.
+
+**PACELC** extends CAP to cover this:
+
+- **If there is a Partition (P):** choose between **Availability (A)** or **Consistency (C)**, exactly as CAP describes.
+- **Else (E):** when the system is running normally with no partition, choose between **Latency (L)** or **Consistency (C)**.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart TD
+      Start["Distributed system"]
+      Start --> Part{"Network\npartition?"}
+      Part -->|Yes| PA["Choose availability\nor consistency"]
+      PA --> AV["Availability: all nodes respond,\nstale data possible"]
+      PA --> CO["Consistency: some nodes\nrefuse, no stale data"]
+      Part -->|No| EL["Choose latency\nor consistency"]
+      EL --> LA["Low latency: read immediately,\nmay get stale data"]
+      EL --> CN["Consistency: wait for\nreplication to complete"]`}
+    caption="PACELC: during a partition, choose between availability and consistency. During normal operation, choose between latency and consistency."
+  />
+</div>
+
+The everyday latency-consistency trade-off works like this: when a client reads data, the system can either return data immediately from the nearest node (low latency, but potentially stale if replication has not completed) or wait until it can confirm the data is up to date across all nodes (consistent, but slower).
+
+This is the same trade-off seen in replication: asynchronous replication favours latency, synchronous replication favours consistency.
+
+PACELC gives a more honest framing of the real decisions database designers make. Systems like Cassandra and DynamoDB are PA/EL: they prioritise availability during partitions and low latency otherwise. Systems like HBase and Zookeeper are PC/EC: they prioritise consistency in both cases, at the cost of availability and latency.
+
+## Summary
+
+<table>
+  <thead>
+    <tr>
+      <th>Concept</th>
+      <th>Key Takeaway</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>CAP theorem</strong></td>
+      <td>In a distributed system, when a network partition occurs, you can only choose one of consistency or availability. Partition tolerance is assumed.</td>
+    </tr>
+    <tr>
+      <td><strong>Consistency (CAP)</strong></td>
+      <td>Every read returns the most recent write or an error. No node returns stale data.</td>
+    </tr>
+    <tr>
+      <td><strong>Availability (CAP)</strong></td>
+      <td>Every node responds to valid requests, even if the data it returns is stale.</td>
+    </tr>
+    <tr>
+      <td><strong>Partition tolerance</strong></td>
+      <td>The system keeps operating even when nodes cannot communicate. Not optional in real distributed systems.</td>
+    </tr>
+    <tr>
+      <td><strong>Choosing availability</strong></td>
+      <td>All nodes keep responding during a partition. Stale reads are possible. The default for most NoSQL systems.</td>
+    </tr>
+    <tr>
+      <td><strong>Choosing consistency</strong></td>
+      <td>Nodes that cannot confirm they are up to date refuse to respond. No stale reads, but some requests fail during the partition.</td>
+    </tr>
+    <tr>
+      <td><strong>PACELC</strong></td>
+      <td>Extends CAP: during a partition choose A or C; during normal operation choose between latency and consistency.</td>
+    </tr>
+    <tr>
+      <td><strong>Latency vs. consistency</strong></td>
+      <td>The everyday trade-off: respond immediately with potentially stale data, or wait for replication to complete before responding.</td>
+    </tr>
+  </tbody>
+</table>

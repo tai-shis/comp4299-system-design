@@ -1,0 +1,190 @@
+import MermaidDiagram from '@/components/MermaidDiagram';
+import Callout from '@/components/Callout';
+
+# NoSQL Databases
+
+These notes cover NoSQL databases: what they are, the four main types, and how they trade ACID guarantees for scalability. NoSQL is best understood not as a replacement for relational databases but as a different set of trade-offs suited to different problems.
+
+## Contents
+
+1. [What Is NoSQL?](#1-what-is-nosql)
+2. [Types of NoSQL Databases](#2-types-of-nosql-databases)
+3. [Scaling and Why NoSQL Helps](#3-scaling-and-why-nosql-helps)
+4. [BASE Properties](#4-base-properties)
+5. [Eventual Consistency](#5-eventual-consistency)
+6. [Summary](#summary)
+
+## 1. What Is NoSQL?
+
+NoSQL stands for "Not Only SQL," though a more accurate name would be **non-relational databases**. They share no standard query language and no common data model. The category is defined by what these databases are not (relational) rather than what they are.
+
+NoSQL databases started gaining widespread adoption around 2010, driven primarily by the limitations of relational databases at large scale. The biggest limitation relational databases run into is the sheer volume of data that modern applications produce and the difficulty of distributing that data across many machines.
+
+## 2. Types of NoSQL Databases
+
+There are four main categories, each suited to a different shape of data and access pattern.
+
+### Key-value stores
+
+The simplest NoSQL model. Data is stored as key-value pairs, where the key is a unique identifier and the value can be anything: a string, a number, a binary blob, or a serialised object. Lookups by key are extremely fast, making key-value stores ideal for caching and session storage.
+
+Examples: Redis, Memcached.
+
+### Document stores
+
+Data is organised into **collections**, where each collection holds **documents**: essentially JSON objects with nested fields. Unlike a relational table, documents in the same collection do not need to share the same shape. This schema flexibility makes document stores well suited to data that varies in structure or evolves frequently. Each document is identified by a primary key.
+
+Examples: MongoDB, Firestore.
+
+### Wide-column databases
+
+Wide-column databases organise data into rows and columns like a relational table, but columns are grouped into **column families** and rows can have different columns. They are optimised for very high write throughput and are commonly used for time-series data, logs, and analytics workloads where data is written constantly but rarely updated or read back in complex ways.
+
+Examples: Cassandra, HBase.
+
+### Graph databases
+
+Graph databases represent data as **nodes** (entities) and **edges** (relationships between them). They are designed for workloads where the relationships are as important as the data itself: social networks, recommendation systems, fraud detection. Answering relationship-heavy queries in a relational database requires many expensive joins; a graph database makes the same queries natural and fast.
+
+Examples: Neo4j, Amazon Neptune.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart TD
+      NoSQL["NoSQL databases"]
+      NoSQL --> KV["Key-value\nRedis, Memcached"]
+      NoSQL --> Doc["Document\nMongoDB, Firestore"]
+      NoSQL --> WC["Wide-column\nCassandra, HBase"]
+      NoSQL --> Graph["Graph\nNeo4j, Neptune"]`}
+    caption="The four main categories of NoSQL databases, each optimised for a different data model and access pattern."
+  />
+</div>
+
+## 3. Scaling and Why NoSQL Helps
+
+Relational databases are straightforward to scale **vertically**, give the server more CPU, memory, and disk. But vertical scaling has a hard ceiling, and it is expensive. **Horizontal scaling**, distributing data across many machines, is much harder with a relational database.
+
+The difficulty comes from the guarantees a relational database makes. If data is spread across multiple machines, every write needs to be consistent across all of them, foreign key constraints need to be enforced across machines, and joining data that lives on different servers becomes a network problem. Maintaining ACID properties in this environment is genuinely difficult and adds significant overhead.
+
+NoSQL databases are designed from the ground up to run across many machines. They achieve this by relaxing or eliminating the constraints that make horizontal scaling hard.
+
+<Callout type="note" title="NoSQL Databases Still Have Transactions">
+  Relaxing ACID does not mean NoSQL databases have no guarantees at all. Most support atomic operations and durable writes. What they give up is the strict, cross-document consistency that a relational database enforces by default.
+</Callout>
+
+## 4. BASE Properties
+
+Where relational databases follow ACID, NoSQL databases are often described as following **BASE**:
+
+<table>
+  <thead>
+    <tr>
+      <th>Property</th>
+      <th>What it means</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Basically Available</strong></td>
+      <td>The system remains available most of the time, but does not guarantee availability in every failure scenario.</td>
+    </tr>
+    <tr>
+      <td><strong>Soft state</strong></td>
+      <td>The state of the system may change over time even without new input, because nodes are still synchronising with each other.</td>
+    </tr>
+    <tr>
+      <td><strong>Eventual consistency</strong></td>
+      <td>The system will become consistent across all nodes eventually, but may return stale data in the short window between a write and full synchronisation.</td>
+    </tr>
+  </tbody>
+</table>
+
+BASE is not a weaker version of ACID, it is a different set of trade-offs. ACID prioritises correctness; BASE prioritises availability and scalability.
+
+## 5. Eventual Consistency
+
+Eventual consistency is the most important concept to understand about NoSQL at scale. To handle more read traffic, a NoSQL database can **replicate** data across multiple nodes, each holding a copy of the same data.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant C1 as Client (write)
+      participant L as Leader node
+      participant F1 as Follower 1
+      participant F2 as Follower 2
+      participant C2 as Client (read)
+
+      C1->>L: Write, update follower count to 1,042
+      L-->>C1: Acknowledged
+      note over F1,F2: Synchronisation in progress
+      C2->>F1: Read, follower count?
+      F1-->>C2: Returns 1,041 (stale)
+      L->>F1: Sync, follower count is 1,042
+      L->>F2: Sync, follower count is 1,042
+      note over F1,F2: Now consistent`}
+    caption="Writes go to the leader node, which acknowledges immediately and synchronises to followers asynchronously. Reads from followers may return stale data until synchronisation completes."
+  />
+</div>
+
+The structure is always **one leader, one or more followers**:
+
+- The leader is the only node that accepts writes. It acknowledges the write immediately and then propagates the change to followers asynchronously.
+- All nodes, leader and followers, can serve reads. This is what allows the system to handle very high read volume.
+- Between a write and the completion of synchronisation, followers may return the previous value. This is the stale read window.
+
+In practice, synchronisation typically completes within a few seconds. For many use cases, follower counts, view counters, news feeds, recommendation systems, a value that is a few seconds out of date is perfectly acceptable. The user experience is not meaningfully affected, and the system gains the ability to serve enormous read volume across many nodes.
+
+<Callout type="tip" title="Choose Consistency Based on What the Data Means">
+  Eventual consistency is a good trade-off when staleness is tolerable. It is a bad trade-off when it is not, a bank balance, a payment status, or inventory availability need to be correct at read time. Choosing between strong and eventual consistency is a product decision as much as a technical one.
+</Callout>
+
+This pattern also explains why read-heavy systems benefit most from NoSQL replication. A platform like Twitter has orders of magnitude more reads (people browsing) than writes (people posting). Serving reads from many follower nodes while funnelling all writes through a single leader maps perfectly to that access pattern.
+
+## Summary
+
+<table>
+  <thead>
+    <tr>
+      <th>Concept</th>
+      <th>Key Takeaway</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>NoSQL</strong></td>
+      <td>Non-relational databases that trade strict consistency for scalability and flexibility. No standard query language or data model.</td>
+    </tr>
+    <tr>
+      <td><strong>Key-value store</strong></td>
+      <td>Simplest model. Fast lookups by key. Good for caching and session data. Examples: Redis, Memcached.</td>
+    </tr>
+    <tr>
+      <td><strong>Document store</strong></td>
+      <td>JSON-like documents in collections. Schema-flexible, supports nesting. Good for varied or evolving data. Example: MongoDB.</td>
+    </tr>
+    <tr>
+      <td><strong>Wide-column database</strong></td>
+      <td>High write throughput, column-family organisation. Good for time-series data and logs. Examples: Cassandra, HBase.</td>
+    </tr>
+    <tr>
+      <td><strong>Graph database</strong></td>
+      <td>Nodes and edges. Good for relationship-heavy queries like social graphs and recommendations. Example: Neo4j.</td>
+    </tr>
+    <tr>
+      <td><strong>Horizontal scaling</strong></td>
+      <td>Distributing data across many machines. NoSQL is designed for this; relational databases struggle because of ACID enforcement across nodes.</td>
+    </tr>
+    <tr>
+      <td><strong>BASE</strong></td>
+      <td>Basically Available, Soft state, Eventual consistency. The NoSQL alternative to ACID, prioritises availability over strict correctness.</td>
+    </tr>
+    <tr>
+      <td><strong>Eventual consistency</strong></td>
+      <td>All nodes will converge to the same value, but reads from followers may return stale data in the short window after a write.</td>
+    </tr>
+    <tr>
+      <td><strong>Leader/follower</strong></td>
+      <td>Writes go to the leader only. Reads can be served by any node. Followers sync asynchronously from the leader.</td>
+    </tr>
+  </tbody>
+</table>

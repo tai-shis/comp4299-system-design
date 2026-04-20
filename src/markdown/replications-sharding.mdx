@@ -1,0 +1,251 @@
+import MermaidDiagram from '@/components/MermaidDiagram';
+import Callout from '@/components/Callout';
+
+# Replication and Sharding
+
+These notes cover the two primary strategies for scaling a database beyond a single machine: replication (multiple copies of the same data) and sharding (splitting data across machines). Both are responses to the same problem, a single database becoming a bottleneck, but they solve different aspects of it.
+
+## Contents
+
+1. [The Single Database Problem](#1-the-single-database-problem)
+2. [Replication](#2-replication)
+3. [Leader-Follower Replication](#3-leader-follower-replication)
+4. [Synchronous vs. Asynchronous Replication](#4-synchronous-vs-asynchronous-replication)
+5. [Leader-Leader Replication](#5-leader-leader-replication)
+6. [Sharding](#6-sharding)
+7. [Sharding Strategies](#7-sharding-strategies)
+8. [SQL vs. NoSQL: Replication and Sharding](#8-sql-vs-nosql-replication-and-sharding)
+9. [Summary](#summary)
+
+## 1. The Single Database Problem
+
+A single database works well at small scale. Every read and write flows through one machine, the data is always consistent, and there is nothing to coordinate.
+
+As scale grows, that single machine becomes a bottleneck. Every read and every write competes for the same resources. If the database goes down, the entire application goes down with it. Queries over large datasets slow to a crawl.
+
+Both replication and sharding address this, but in different ways: replication adds copies of the same data, and sharding splits the data into smaller pieces.
+
+## 2. Replication
+
+Replication means maintaining multiple copies of the same database across multiple machines. Reads and writes can be distributed across these copies, improving both throughput and availability.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      App["Application"]
+      App --> DB1["Database copy 1"]
+      App --> DB2["Database copy 2"]
+      App --> DB3["Database copy 3"]`}
+    caption="With replication, the application can read from any copy of the database, spreading the load across multiple machines."
+  />
+</div>
+
+The core challenge with replication is keeping all copies consistent. There are two main replication models that handle this differently.
+
+## 3. Leader-Follower Replication
+
+The most common replication model. One node is designated the **leader** (sometimes called master). All write operations go to the leader only. The leader then replicates the changes to one or more **followers** (sometimes called replicas or slaves). Reads can be served by any node, leader or follower.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      W["Write"] --> L["Leader"]
+      L -->|replicate| F1["Follower 1"]
+      L -->|replicate| F2["Follower 2"]
+      R["Read"] --> L
+      R --> F1
+      R --> F2`}
+    caption="All writes go to the leader. The leader replicates changes to followers. Reads can be served by any node."
+  />
+</div>
+
+Because replication flows in one direction only (leader to followers), there is no risk of conflicting writes. This makes the model straightforward to reason about.
+
+The trade-off is **eventual consistency**: replication is not instantaneous. If a client writes to the leader and immediately reads from a follower, the follower may not yet have received the update and will return stale data. This is the same trade-off covered in the NoSQL chapter. For most read-heavy workloads, this short inconsistency window is acceptable.
+
+<Callout type="tip" title="Leader-Follower Suits Read-Heavy Workloads">
+  Read operations are almost always more frequent than writes. Leader-follower replication lets you scale reads horizontally by adding more followers, while writes remain centralised on a single leader. This maps well to most web applications.
+</Callout>
+
+## 4. Synchronous vs. Asynchronous Replication
+
+By default, replication is **asynchronous**: the leader acknowledges the write to the client immediately and replicates to followers in the background. This is fast but introduces the stale read window described above.
+
+**Synchronous replication** changes this: the leader waits for every follower to confirm they have received and written the data before acknowledging the transaction as complete. No read from any node will ever return stale data.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant C as Client
+      participant L as Leader
+      participant F1 as Follower 1
+      participant F2 as Follower 2
+
+      note over C,F2: Asynchronous replication
+      C->>L: Write
+      L-->>C: Acknowledged
+      L->>F1: Replicate (background)
+      L->>F2: Replicate (background)
+
+      note over C,F2: Synchronous replication
+      C->>L: Write
+      L->>F1: Replicate
+      L->>F2: Replicate
+      F1-->>L: Acknowledged
+      F2-->>L: Acknowledged
+      L-->>C: Acknowledged`}
+    caption="Asynchronous replication acknowledges the write immediately. Synchronous replication waits for all followers to confirm before acknowledging, eliminating stale reads at the cost of higher latency."
+  />
+</div>
+
+The cost of synchronous replication is latency. The leader must wait for every follower before the transaction is considered complete. If a follower is slow or unreachable, the entire write stalls. In practice, fully synchronous replication across all followers is rare. A common middle ground is **semi-synchronous**: wait for at least one follower to confirm, then replicate to the rest asynchronously.
+
+## 5. Leader-Leader Replication
+
+In leader-leader replication (also called multi-master), every node accepts both reads and writes. Changes are replicated between all nodes in both directions.
+
+This is more powerful but significantly more complex. If two clients write to different nodes at the same time, both writes may conflict. The system needs a **conflict resolution strategy** to decide which write wins. Common approaches include last-write-wins using timestamps, or version vectors that track the history of changes.
+
+Leader-leader replication is most useful when geography matters. A social platform with users across multiple continents might run a leader node in each region, letting users read and write from the nearest data centre. Writes from different regions may occasionally conflict, but the benefit of low latency for users worldwide justifies the complexity.
+
+<Callout type="note" title="Leader-Leader Conflicts Are Hard to Avoid">
+  Conflict resolution is genuinely difficult to get right. Last-write-wins sounds simple but can silently discard valid data if clocks are not perfectly synchronised. Leader-leader replication should only be adopted when the use case genuinely requires it.
+</Callout>
+
+## 6. Sharding
+
+Replication copies the same data to multiple machines. Sharding does something different: it **splits** the data across machines, so each machine holds only a portion of the total dataset.
+
+Each portion is called a **shard**. If a table has ten million rows and is split into four shards, each shard holds roughly 2.5 million rows on its own machine. A query that previously had to scan ten million rows now scans 2.5 million, and can run in parallel across shards.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      App["Application"]
+      App --> S1["Shard 1\nrows 1-2.5M"]
+      App --> S2["Shard 2\nrows 2.5M-5M"]
+      App --> S3["Shard 3\nrows 5M-7.5M"]
+      App --> S4["Shard 4\nrows 7.5M-10M"]`}
+    caption="Sharding splits the dataset across multiple machines. Each shard holds a subset of the rows. Queries only touch the relevant shard."
+  />
+</div>
+
+Sharding is appropriate when replication alone is not enough: when the dataset is so large that a single machine cannot store it, or when query volume is so high that even many replicas cannot keep up.
+
+<Callout type="warning" title="Sharding Is Extremely Complex to Implement">
+  The concept of sharding is simple. The implementation is not. Cross-shard queries, rebalancing when adding or removing shards, handling shard failures, and maintaining referential integrity across shards are all hard problems. Sharding should only be reached for when the data size or query volume genuinely demands it.
+</Callout>
+
+## 7. Sharding Strategies
+
+The central question in sharding is how to decide which row goes to which shard. The answer is determined by a **shard key**: a column (usually the primary key) whose value determines which shard a row belongs to.
+
+### Range-based sharding
+
+The simplest approach. Rows are assigned to shards based on ranges of the shard key value. For example, rows where the primary key falls between 1 and 2.5 million go to shard 1, between 2.5 million and 5 million to shard 2, and so on. Other natural range keys include alphabetical splits (surnames A-M on one shard, N-Z on another) or time ranges.
+
+The risk with range-based sharding is **hot spots**: if most activity concentrates in one range (for example, all new records being added to the highest-key shard), one shard gets much more traffic than the others.
+
+### Hash-based sharding
+
+A hash function is applied to the shard key, and the result determines the shard. Because hash functions distribute values uniformly, data and traffic spread evenly across shards regardless of the key values.
+
+The trade-off is that range queries become difficult: rows with adjacent keys end up on different shards, so a query for "all records created this week" must touch every shard. This is where consistent hashing becomes relevant: it minimises the disruption when shards are added or removed.
+
+## 8. SQL vs. NoSQL: Replication and Sharding
+
+The difference in how SQL and NoSQL databases handle replication and sharding is one of the most practical distinctions between them.
+
+**SQL databases** (PostgreSQL, MySQL) do not have sharding built in. Replication is supported but typically requires configuration and operational knowledge. Sharding must be implemented at the application layer or with an external tool. This is largely because the relational model, with its foreign keys, joins, and ACID guarantees, is fundamentally difficult to distribute across machines.
+
+**NoSQL databases** are designed from the ground up for horizontal scalability. Sharding and replication are typically built-in features managed by the database itself. Cassandra automatically distributes data across nodes using consistent hashing. MongoDB has a native sharding layer called mongos. The trade-off is that these databases relax or eliminate the constraints that make distribution hard.
+
+<table>
+  <thead>
+    <tr>
+      <th>Dimension</th>
+      <th>SQL</th>
+      <th>NoSQL</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Replication</strong></td>
+      <td>Supported, requires configuration</td>
+      <td>Usually built-in and automatic</td>
+    </tr>
+    <tr>
+      <td><strong>Sharding</strong></td>
+      <td>Not built-in; must be implemented manually</td>
+      <td>Usually built-in and automatic</td>
+    </tr>
+    <tr>
+      <td><strong>Horizontal scaling</strong></td>
+      <td>Difficult due to ACID and relational constraints</td>
+      <td>Designed for it; a core feature</td>
+    </tr>
+    <tr>
+      <td><strong>Consistency</strong></td>
+      <td>Strong by default</td>
+      <td>Eventual by default</td>
+    </tr>
+    <tr>
+      <td><strong>Cross-shard joins</strong></td>
+      <td>Very difficult</td>
+      <td>Generally avoided by design</td>
+    </tr>
+  </tbody>
+</table>
+
+## Summary
+
+<table>
+  <thead>
+    <tr>
+      <th>Concept</th>
+      <th>Key Takeaway</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Replication</strong></td>
+      <td>Multiple copies of the same data on different machines. Improves read throughput and availability.</td>
+    </tr>
+    <tr>
+      <td><strong>Leader-follower</strong></td>
+      <td>Writes go to one leader; reads can come from any follower. Simple and conflict-free, at the cost of eventual consistency.</td>
+    </tr>
+    <tr>
+      <td><strong>Async replication</strong></td>
+      <td>Leader acknowledges immediately; followers receive data in the background. Fast but allows stale reads.</td>
+    </tr>
+    <tr>
+      <td><strong>Sync replication</strong></td>
+      <td>Leader waits for all followers to confirm before acknowledging. No stale reads, but higher latency.</td>
+    </tr>
+    <tr>
+      <td><strong>Leader-leader</strong></td>
+      <td>Every node accepts reads and writes. Powerful for multi-region setups but requires conflict resolution.</td>
+    </tr>
+    <tr>
+      <td><strong>Sharding</strong></td>
+      <td>The dataset is split across machines. Each shard holds a subset of rows. Reduces query scope and increases write throughput.</td>
+    </tr>
+    <tr>
+      <td><strong>Shard key</strong></td>
+      <td>The column used to decide which shard a row belongs to. Choice of shard key determines how evenly data is distributed.</td>
+    </tr>
+    <tr>
+      <td><strong>Range-based sharding</strong></td>
+      <td>Rows are assigned by value ranges of the shard key. Simple but risks hot spots.</td>
+    </tr>
+    <tr>
+      <td><strong>Hash-based sharding</strong></td>
+      <td>A hash of the shard key determines placement. Distributes evenly but makes range queries expensive.</td>
+    </tr>
+    <tr>
+      <td><strong>SQL vs. NoSQL scaling</strong></td>
+      <td>SQL databases require manual sharding and configuration for replication. NoSQL databases have both built in as core features.</td>
+    </tr>
+  </tbody>
+</table>
