@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import Navbar from './Navbar';
@@ -12,11 +15,40 @@ const maxWidthClass = {
   lg: 'max-w-5xl',
 };
 
+function SidebarToggleIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M9 3v18" />
+    </svg>
+  );
+}
+
 export default function PageLayout({ children, maxWidth = 'md' }: PageLayoutProps) {
+  const [collapsed, setCollapsed] = useState(false);
+
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[#0a0a0f] text-gray-100">
       {/* Top bar */}
-      <header className="shrink-0 h-13 border-b border-gray-800/80 bg-[#0a0a0f] flex items-center px-6 gap-3 z-10">
+      <header className="shrink-0 h-13 border-b border-gray-800/80 bg-[#0a0a0f] flex items-center px-4 gap-3 z-10">
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="p-1.5 text-gray-600 hover:text-gray-300 hover:bg-gray-800/60 rounded transition-colors"
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          <SidebarToggleIcon />
+        </button>
+
         <Link
           href="/"
           className="group flex items-center gap-2"
@@ -30,6 +62,7 @@ export default function PageLayout({ children, maxWidth = 'md' }: PageLayoutProp
             System Design
           </span>
         </Link>
+
         <div className="ml-auto">
           <a
             href="https://neetcode.io/courses/system-design-for-beginners/0"
@@ -44,7 +77,7 @@ export default function PageLayout({ children, maxWidth = 'md' }: PageLayoutProp
 
       {/* Body: sidebar + content */}
       <div className="flex flex-1 overflow-hidden">
-        <Navbar />
+        <Navbar collapsed={collapsed} />
 
         {/* Scrollable content area */}
         <div className="flex-1 overflow-y-auto flex flex-col min-w-0">

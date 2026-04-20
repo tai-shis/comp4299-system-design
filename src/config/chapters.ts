@@ -159,6 +159,12 @@ export const chapters: Chapter[] = [
         description: 'Consistency, availability, and partition tolerance — and the PACELC extension.',
         tags: ['cap-theorem', 'pacelc', 'consistency', 'distributed-systems'],
       },
+      {
+        title: 'Object Storage',
+        href: '/storage/object-storage',
+        description: 'BLOBs, flat namespaces, unique keys, and when to use S3-style storage.',
+        tags: ['object-storage', 's3', 'blob', 'cdn'],
+      },
     ],
   },
   // ─── Add future chapters below ────────────────────────────────────────────

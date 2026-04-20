@@ -1,0 +1,169 @@
+import MermaidDiagram from '@/components/MermaidDiagram';
+import Callout from '@/components/Callout';
+
+# Object Storage
+
+Object storage is a data storage model designed for large, unstructured files. It sits alongside relational databases and caches in most production architectures, handling the data those systems are not suited for.
+
+## Contents
+
+1. [What Is Object Storage?](#1-what-is-object-storage)
+2. [Flat Structure and Keys](#2-flat-structure-and-keys)
+3. [BLOBs](#3-blobs)
+4. [How Access Works](#4-how-access-works)
+5. [When to Use Object Storage](#5-when-to-use-object-storage)
+6. [Summary](#summary)
+
+## 1. What Is Object Storage?
+
+Object storage is a system for storing arbitrary binary data as discrete objects. Each object is an independent unit containing the file data itself, a globally unique key used to identify it, and optional metadata describing it.
+
+Major cloud providers offer managed object storage as a service: AWS S3, Azure Blob Storage, and Google Cloud Storage are the most widely used. The core model is the same across all of them.
+
+The key differences from a traditional filesystem or relational database:
+
+- **No hierarchy.** There are no real directories or folders. Objects sit in a flat namespace.
+- **Write once.** Objects can be created and retrieved, but not partially updated in place.
+- **Accessed by key.** Objects are retrieved by their unique key, not by traversing a path.
+- **Optimised for large files.** Object storage handles gigabyte and terabyte-scale files efficiently, where a relational database would not.
+
+## 2. Flat Structure and Keys
+
+Object storage has no real folder hierarchy. When a file appears to live at a path like `photos/2024/january/img_001.jpg`, that full string is simply the object's key. The slashes are part of the name, not actual directory separators. The storage system does not know or care about them.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`flowchart LR
+      subgraph "How it looks"
+        D1["photos/"]
+        D2["2024/"]
+        D3["january/"]
+        F1["img_001.jpg"]
+        D1 --> D2 --> D3 --> F1
+      end
+      subgraph "How it actually works"
+        K["Key: photos/2024/january/img_001.jpg"]
+        V["Value: binary file data"]
+        K --> V
+      end`}
+    caption="Folder paths in object storage are an illusion. The full path is just the object's key in a flat key-value store."
+  />
+</div>
+
+This means keys must be **globally unique** within a bucket. Two objects cannot share the same key. In AWS S3, bucket names themselves must be globally unique across all customers. Unique keys are typically generated using UUIDs, timestamps, or hash-based identifiers.
+
+Because retrieval is by key, searches over object contents are not possible natively. If an application needs to find objects matching certain criteria, it stores that metadata in a relational database and uses the database to look up the corresponding key, then fetches the object from storage.
+
+## 3. BLOBs
+
+The data stored in object storage is referred to as a **BLOB**: Binary Large Object. A BLOB is any arbitrary sequence of bytes. Object storage does not interpret or understand the content; it stores and returns bytes.
+
+Typical BLOBs include:
+
+- Images (JPEG, PNG, WebP)
+- Videos (MP4, MOV)
+- Audio files (MP3, WAV)
+- Documents (PDF, DOCX)
+- Database backups and exports
+- Compiled software artifacts and build outputs
+- Log archives
+
+The "large" in BLOB is relative: object storage handles files from a few bytes up to terabytes, but its design is optimised for files too large to store efficiently in a database column.
+
+<Callout type="note" title="Object Storage Is Not a Database">
+  Object storage has no query language, no transactions, and no schema. It is a key-value store for binary data. For structured data that needs to be queried, updated, or joined, a relational or NoSQL database is still the right tool. Object storage handles the files those databases reference.
+</Callout>
+
+## 4. How Access Works
+
+Objects are accessed over HTTP, using standard REST verbs. Most object storage systems expose a simple API:
+
+- `PUT /bucket/key` uploads a new object.
+- `GET /bucket/key` retrieves the object.
+- `DELETE /bucket/key` removes the object.
+
+There is no `PATCH` or partial update. If an object needs to change, the entire object must be re-uploaded under the same key, replacing the previous version.
+
+<div className="large-diagram">
+  <MermaidDiagram
+    chart={`sequenceDiagram
+      participant U as User
+      participant App as Application
+      participant DB as Database
+      participant S3 as Object Storage
+
+      U->>App: Request profile picture
+      App->>DB: Look up image key for user
+      DB-->>App: key: avatars/usr_8f3kd92.jpg
+      App->>S3: GET avatars/usr_8f3kd92.jpg
+      S3-->>App: Binary image data
+      App-->>U: Image`}
+    caption="A typical pattern: the database stores the object key as metadata, and the application uses that key to fetch the actual file from object storage."
+  />
+</div>
+
+For publicly accessible files, object storage providers also support **pre-signed URLs**: time-limited URLs that grant temporary access to a specific object without requiring the requester to have storage credentials. This is commonly used to serve images and videos directly to users without routing the binary data through the application server.
+
+## 5. When to Use Object Storage
+
+Object storage is the right choice whenever the data is:
+
+- **Large binary files.** Images, videos, audio, PDFs. Storing these in a database column is technically possible but wastes database resources and degrades performance.
+- **Write-once or rarely updated.** Profile pictures, uploaded documents, media assets. The inability to partially update an object is not a limitation when the files themselves do not change frequently.
+- **Accessed directly by clients.** Videos and images can be served to users directly from object storage via a CDN, bypassing the application server entirely.
+- **Long-term archival.** Backups, logs, and audit trails that need to be retained but not queried.
+
+Object storage is not appropriate for structured data that needs to be queried, filtered, or joined. Those use cases belong in a database. The common pattern in most applications is: store structured metadata (title, uploader, timestamp, file key) in a relational database, and store the actual file in object storage.
+
+<Callout type="tip" title="Pair Object Storage with a CDN for Media">
+  Serving large files directly from object storage on every request is slow and expensive. A CDN (content delivery network) sits in front of object storage and caches files at edge locations close to users. The first request fetches from storage; subsequent requests are served from the cache. This is the standard architecture for any application serving images or video at scale.
+</Callout>
+
+## Summary
+
+<table>
+  <thead>
+    <tr>
+      <th>Concept</th>
+      <th>Key Takeaway</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Object storage</strong></td>
+      <td>A flat key-value store for arbitrary binary files. No hierarchy, no schema, no partial updates.</td>
+    </tr>
+    <tr>
+      <td><strong>BLOB</strong></td>
+      <td>Binary Large Object. The raw file data stored in object storage: images, video, audio, documents, backups.</td>
+    </tr>
+    <tr>
+      <td><strong>Flat namespace</strong></td>
+      <td>Folder paths are an illusion. The full path string is simply the object's key. There are no real directories.</td>
+    </tr>
+    <tr>
+      <td><strong>Unique keys</strong></td>
+      <td>Every object must have a globally unique key within its bucket. Duplicate keys overwrite the existing object.</td>
+    </tr>
+    <tr>
+      <td><strong>Write once</strong></td>
+      <td>Objects cannot be partially updated. To change a file, the entire object must be re-uploaded.</td>
+    </tr>
+    <tr>
+      <td><strong>HTTP access</strong></td>
+      <td>Objects are read and written over standard HTTP using GET, PUT, and DELETE.</td>
+    </tr>
+    <tr>
+      <td><strong>Pre-signed URLs</strong></td>
+      <td>Time-limited URLs that grant temporary access to a specific object. Used to serve files directly to clients.</td>
+    </tr>
+    <tr>
+      <td><strong>Common pattern</strong></td>
+      <td>Store structured metadata and the file key in a relational database. Store the actual file in object storage.</td>
+    </tr>
+    <tr>
+      <td><strong>CDN pairing</strong></td>
+      <td>Object storage is typically fronted by a CDN to cache files at edge locations and reduce latency for end users.</td>
+    </tr>
+  </tbody>
+</table>

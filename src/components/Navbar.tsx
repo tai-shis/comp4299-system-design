@@ -22,11 +22,17 @@ function ArrowRight() {
   );
 }
 
-export default function Navbar() {
+interface NavbarProps {
+  collapsed: boolean;
+}
+
+export default function Navbar({ collapsed }: NavbarProps) {
   const pathname = usePathname();
 
   return (
-    <aside className="w-64 shrink-0 border-r border-gray-800 flex flex-col bg-[#0a0a0f] overflow-hidden">
+    <aside
+      className={`${collapsed ? 'w-0' : 'w-64'} shrink-0 border-r border-gray-800 flex flex-col bg-[#0a0a0f] overflow-hidden transition-[width] duration-200`}
+    >
       <nav className="flex-1 overflow-y-auto py-2 [&::-webkit-scrollbar]:hidden [scrollbar-width:none] [-ms-overflow-style:none]">
         {chapters.map((chapter: Chapter) => {
           const isChapterActive = chapter.pages.some((p) => p.href === pathname);
